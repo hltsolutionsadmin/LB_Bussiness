@@ -1,4 +1,4 @@
-package com.localbasket.local_basket_business
+package com.localBasketBusiness
 
 import io.flutter.embedding.android.FlutterActivity
 
