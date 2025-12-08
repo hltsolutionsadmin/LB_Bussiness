@@ -3,6 +3,7 @@ import 'package:local_basket_business/presentation/screens/restaurant/splash_scr
 import 'package:local_basket_business/presentation/screens/restaurant/mobile_login.dart';
 import 'package:local_basket_business/presentation/screens/restaurant/otp_verification.dart';
 import 'package:local_basket_business/presentation/screens/restaurant/dashboard.dart';
+import 'package:local_basket_business/presentation/screens/admin/admin_home.dart';
 
 // Global navigator key to allow navigation from services (e.g., Dio interceptors)
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -12,6 +13,7 @@ class AppRoutes {
   static const String login = '/login';
   static const String otp = '/otp';
   static const String dashboard = '/dashboard';
+  static const String admin = '/admin';
 }
 
 class AppRouteGenerator {
@@ -40,6 +42,12 @@ class AppRouteGenerator {
       case AppRoutes.dashboard:
         return MaterialPageRoute(
           builder: (_) => DashboardScreen(),
+          settings: settings,
+        );
+
+      case AppRoutes.admin:
+        return MaterialPageRoute(
+          builder: (_) => const AdminHomeScreen(),
           settings: settings,
         );
 
