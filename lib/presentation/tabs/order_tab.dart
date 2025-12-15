@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
-import 'package:audioplayers/audioplayers.dart';
 import 'package:local_basket_business/core/utils/responsive.dart';
 import 'package:local_basket_business/di/locator.dart';
 import 'package:local_basket_business/core/session/session_store.dart';
@@ -27,7 +26,6 @@ class _OrdersTabState extends State<OrdersTab> {
   final int _size = 10;
 
   Timer? _refreshTimer;
-  final AudioPlayer _audioPlayer = AudioPlayer();
   Set<String> _previousOrderIds = <String>{};
   bool _isInitialLoad = true;
 
@@ -49,13 +47,12 @@ class _OrdersTabState extends State<OrdersTab> {
   @override
   void dispose() {
     _refreshTimer?.cancel();
-    _audioPlayer.dispose();
     _scrollController.dispose();
     super.dispose();
   }
 
   void _startAutoRefresh() {
-    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
+    _refreshTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       _silentRefresh();
     });
   }
@@ -78,23 +75,7 @@ class _OrdersTabState extends State<OrdersTab> {
           .map((order) => order['id'].toString())
           .toSet();
 
-      if (!_isInitialLoad) {
-        // Check for new orders
-        final newOrders = pageData.items.where((order) {
-          final orderId = order['id'].toString();
-          return !_previousOrderIds.contains(orderId);
-        }).toList();
-
-        if (newOrders.isNotEmpty) {
-          await _playNewOrderSound();
-
-          // Show details for new orders automatically
-          for (final newOrder in newOrders) {
-            _showOrderDetailsDialog(newOrder, isNewOrder: true);
-            break; // Show only the first new order to avoid multiple dialogs
-          }
-        }
-      }
+      // Background popup/sound handled by global OrdersPoller now
 
       _previousOrderIds = newOrderIds;
       _isInitialLoad = false;
@@ -114,22 +95,7 @@ class _OrdersTabState extends State<OrdersTab> {
     }
   }
 
-  Future<void> _playNewOrderSound() async {
-    try {
-      await _audioPlayer.play(AssetSource('sounds/hen.mp3'));
-      await _audioPlayer.setReleaseMode(ReleaseMode.loop); // Loop continuously
-    } catch (e) {
-      debugPrint('Failed to play sound: $e');
-    }
-  }
-
-  Future<void> _stopSound() async {
-    try {
-      await _audioPlayer.stop();
-    } catch (e) {
-      debugPrint('Failed to stop sound: $e');
-    }
-  }
+  // Sound/popups are handled globally.
 
   // Helper methods
   int? _getBusinessId() {
@@ -258,26 +224,8 @@ class _OrdersTabState extends State<OrdersTab> {
   }) {
     showDialog(
       context: context,
-      barrierDismissible:
-          !isNewOrder, // Prevent dismissing new order dialogs by tapping outside
-      builder: (context) => OrderDetailsDialog(
-        order: order,
-        isNewOrder: isNewOrder,
-        onAccept: isNewOrder
-            ? () async {
-                await _stopSound();
-                await _updateOrderStatus(order, 'ACCEPTED');
-                if (mounted) Navigator.pop(context);
-              }
-            : null,
-        onReject: isNewOrder
-            ? () async {
-                await _stopSound();
-                await _updateOrderStatus(order, 'REJECTED');
-                if (mounted) Navigator.pop(context);
-              }
-            : null,
-      ),
+      barrierDismissible: true,
+      builder: (context) => OrderDetailsDialog(order: order, isNewOrder: false),
     );
   }
 
@@ -311,9 +259,80 @@ class _OrdersTabState extends State<OrdersTab> {
                 padding: EdgeInsets.symmetric(
                   horizontal: Responsive.horizontalPadding(context),
                 ),
-                itemCount: filteredOrders.length + (_hasNext ? 1 : 0),
+                itemCount: filteredOrders.isEmpty
+                    ? 1
+                    : filteredOrders.length +
+                          ((_hasNext && _selectedFilter == 'all') ? 1 : 0),
                 itemBuilder: (context, index) {
-                  if (index >= filteredOrders.length) {
+                  // Empty state when no items in current filter
+                  if (filteredOrders.isEmpty) {
+                    final title = _selectedFilter == 'all'
+                        ? 'No orders yet'
+                        : 'No ${_selectedFilter} orders';
+                    final subtitle = _selectedFilter == 'all'
+                        ? 'Orders will appear here as customers place them.'
+                        : 'Try switching filters or refresh to check again.';
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 56),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF3F4F6),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.inbox_outlined,
+                              size: 36,
+                              color: Color(0xFF9CA3AF),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            title,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF111827),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            subtitle,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: Color(0xFF6B7280),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w400,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          OutlinedButton.icon(
+                            onPressed: () => _loadPage(refresh: true),
+                            icon: const Icon(Icons.refresh, size: 18),
+                            label: const Text('Refresh'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: const Color(0xFFF97316),
+                              side: const BorderSide(color: Color(0xFFF97316)),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 10,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+
+                  // Bottom loader only when viewing 'all'
+                  if (index >= filteredOrders.length &&
+                      _selectedFilter == 'all') {
                     return const Padding(
                       padding: EdgeInsets.symmetric(vertical: 16),
                       child: Center(child: CircularProgressIndicator()),
