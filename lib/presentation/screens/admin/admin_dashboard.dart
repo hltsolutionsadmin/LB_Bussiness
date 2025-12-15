@@ -1,40 +1,39 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:local_basket_business/theme/app_colors.dart';
+import 'package:local_basket_business/widgets/glass_card.dart';
+import 'package:local_basket_business/widgets/stat_card.dart';
 
-import '../../providers/restaurant_provider.dart';
-import '../../providers/delivery_provider.dart';
-import '../../providers/analytics_provider.dart';
-import '../../widgets/glass_card.dart';
-import '../../widgets/stat_card.dart';
-import '../../theme/app_colors.dart';
-
-class DashboardScreen extends StatelessWidget {
+class AdminDashboardScreen extends StatelessWidget {
   final Function(String) onNavigate;
-
-  const DashboardScreen({super.key, required this.onNavigate});
+  const AdminDashboardScreen({super.key, required this.onNavigate});
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: RefreshIndicator(
-        onRefresh: () async {
-          await context.read<AnalyticsProvider>().refreshAnalytics();
-        },
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildWelcomeSection(context),
-              const SizedBox(height: 24),
-              _buildQuickStats(context),
-              const SizedBox(height: 24),
-              _buildQuickActions(context),
-              const SizedBox(height: 24),
-              _buildRecentActivity(context),
-            ],
+    return Scaffold(
+      body: Container(
+        color: Colors.white,
+        child: SafeArea(
+          child: RefreshIndicator(
+            onRefresh: () async {
+              await Future.delayed(500.ms);
+            },
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildWelcomeSection(context),
+                  const SizedBox(height: 24),
+                  _buildQuickStats(context),
+                  const SizedBox(height: 24),
+                  _buildQuickActions(context),
+                  const SizedBox(height: 24),
+                  _buildRecentActivity(context),
+                ],
+              ),
+            ),
           ),
         ),
       ),
@@ -49,7 +48,7 @@ class DashboardScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'Welcome Back,',
                       style: TextStyle(
                         fontSize: 16,
@@ -57,7 +56,7 @@ class DashboardScreen extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    const Text(
+                    Text(
                       'Admin',
                       style: TextStyle(
                         fontSize: 24,
@@ -119,9 +118,11 @@ class DashboardScreen extends StatelessWidget {
   }
 
   Widget _buildQuickStats(BuildContext context) {
-    final analytics = context.watch<AnalyticsProvider>();
-    final restaurants = context.watch<RestaurantProvider>();
-    final delivery = context.watch<DeliveryProvider>();
+    // Dummy values
+    final totalOrders = 15230;
+    final revenue = 734500;
+    final restaurants = 128;
+    final partners = 412;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -145,35 +146,29 @@ class DashboardScreen extends StatelessWidget {
           children: [
             StatCard(
               title: 'Total Orders',
-              value: analytics.stats != null
-                  ? _formatNumber(analytics.stats!.totalOrders)
-                  : '0',
+              value: _formatNumber(totalOrders),
               icon: Icons.shopping_bag,
               iconColor: AppColors.orange600,
               subtitle: '+12%',
             ),
             StatCard(
               title: 'Revenue',
-              value: analytics.stats != null
-                  ? '₹${_formatNumber(analytics.stats!.revenue.toInt())}'
-                  : '₹0',
+              value: '₹${_formatNumber(revenue)}',
               icon: Icons.currency_rupee,
               iconColor: AppColors.success,
               subtitle: '+23%',
             ),
             StatCard(
               title: 'Restaurants',
-              value: '${restaurants.activeRestaurants}',
+              value: '$restaurants',
               icon: Icons.restaurant,
               iconColor: AppColors.info,
-              onTap: () => onNavigate('restaurants'),
             ),
             StatCard(
               title: 'Delivery Partners',
-              value: '${delivery.activePartners}',
+              value: '$partners',
               icon: Icons.delivery_dining,
               iconColor: AppColors.warning,
-              onTap: () => onNavigate('delivery'),
             ),
           ],
         ),
@@ -203,14 +198,14 @@ class DashboardScreen extends StatelessWidget {
                     subtitle: 'Add a new restaurant to the platform',
                     onTap: () => onNavigate('onboarding'),
                   ),
-                  const Divider(color: AppColors.glassBorder, height: 1),
+                  const Divider(color: Color(0x33FFFFFF), height: 1),
                   _buildActionTile(
                     icon: Icons.person_add,
                     title: 'Add Delivery Partner',
                     subtitle: 'Register a new delivery partner',
                     onTap: () => onNavigate('delivery'),
                   ),
-                  const Divider(color: AppColors.glassBorder, height: 1),
+                  const Divider(color: Color(0x33FFFFFF), height: 1),
                   _buildActionTile(
                     icon: Icons.assessment,
                     title: 'View Reports',
@@ -263,7 +258,7 @@ class DashboardScreen extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     subtitle,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12,
                       color: AppColors.textSecondary,
                     ),
@@ -274,7 +269,7 @@ class DashboardScreen extends StatelessWidget {
             const Icon(
               Icons.arrow_forward_ios,
               size: 16,
-              color: AppColors.textMuted,
+              color: Colors.white70,
             ),
           ],
         ),
@@ -298,23 +293,23 @@ class DashboardScreen extends StatelessWidget {
         GlassCard(
               child: Column(
                 children: [
-                  _buildActivityItem(
+                  _ActivityItem(
                     icon: Icons.restaurant,
                     title: 'New Restaurant Added',
                     subtitle: 'Spice Garden joined the platform',
                     time: '2 hours ago',
                     color: AppColors.success,
                   ),
-                  const Divider(color: AppColors.glassBorder, height: 1),
-                  _buildActivityItem(
+                  Divider(color: Color(0x33FFFFFF), height: 1),
+                  _ActivityItem(
                     icon: Icons.delivery_dining,
                     title: 'Delivery Partner Joined',
                     subtitle: 'Vijay Kumar registered as delivery partner',
                     time: '4 hours ago',
                     color: AppColors.info,
                   ),
-                  const Divider(color: AppColors.glassBorder, height: 1),
-                  _buildActivityItem(
+                  Divider(color: Color(0x33FFFFFF), height: 1),
+                  _ActivityItem(
                     icon: Icons.shopping_bag,
                     title: 'High Order Volume',
                     subtitle: '500+ orders completed today',
@@ -331,13 +326,32 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildActivityItem({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required String time,
-    required Color color,
-  }) {
+  String _formatNumber(int number) {
+    if (number >= 1000000) {
+      return '${(number / 1000000).toStringAsFixed(1)}M';
+    } else if (number >= 1000) {
+      return '${(number / 1000).toStringAsFixed(1)}K';
+    }
+    return number.toString();
+  }
+}
+
+class _ActivityItem extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final String time;
+  final Color color;
+  const _ActivityItem({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.time,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12),
       child: Row(
@@ -366,7 +380,7 @@ class DashboardScreen extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   subtitle,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
                     color: AppColors.textSecondary,
                   ),
@@ -376,19 +390,10 @@ class DashboardScreen extends StatelessWidget {
           ),
           Text(
             time,
-            style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+            style: TextStyle(fontSize: 11, color: AppColors.textMuted),
           ),
         ],
       ),
     );
-  }
-
-  String _formatNumber(int number) {
-    if (number >= 1000000) {
-      return '${(number / 1000000).toStringAsFixed(1)}M';
-    } else if (number >= 1000) {
-      return '${(number / 1000).toStringAsFixed(1)}K';
-    }
-    return number.toString();
   }
 }

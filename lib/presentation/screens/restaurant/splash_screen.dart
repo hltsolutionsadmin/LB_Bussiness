@@ -50,7 +50,16 @@ class _SplashScreenState extends State<SplashScreen>
           sl<SessionStore>().setUser(details);
         } catch (_) {}
         if (!mounted) return;
-        Navigator.of(context).pushReplacementNamed(AppRoutes.dashboard);
+        final roles = sl<SessionStore>().roleNames;
+        if (roles.contains('ROLE_USER_ADMIN')) {
+          Navigator.of(context).pushReplacementNamed(AppRoutes.admin);
+          return;
+        }
+        if (roles.contains('ROLE_RESTAURANT_OWNER')) {
+          Navigator.of(context).pushReplacementNamed(AppRoutes.dashboard);
+          return;
+        }
+        Navigator.of(context).pushReplacementNamed(AppRoutes.login);
         return;
       }
     } catch (_) {}

@@ -26,6 +26,14 @@
 	<true/>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>This app needs access to your location even when the app is in background.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>This app needs access to your location to show your current place.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Your app needs access to the microphone for speech recognition.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>This app requires access to your photo library to allow you to select images for uploading.</string>
 	<key>UIMainStoryboardFile</key>
 	<string>Main</string>
 	<key>UISupportedInterfaceOrientations</key>

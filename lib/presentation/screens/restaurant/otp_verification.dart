@@ -78,9 +78,23 @@ class _OTPScreenState extends State<OTPScreen> {
         sl<SessionStore>().setUser(details);
       } catch (_) {}
       if (!mounted) return;
-      Navigator.of(
-        context,
-      ).pushNamedAndRemoveUntil(AppRoutes.dashboard, (route) => false);
+      final roles = sl<SessionStore>().roleNames;
+      if (roles.contains('ROLE_USER_ADMIN')) {
+        Navigator.of(
+          context,
+        ).pushNamedAndRemoveUntil(AppRoutes.admin, (route) => false);
+        return;
+      }
+      if (roles.contains('ROLE_RESTAURANT_OWNER')) {
+        Navigator.of(
+          context,
+        ).pushNamedAndRemoveUntil(AppRoutes.dashboard, (route) => false);
+        return;
+      }
+      setState(() {
+        _errorText =
+            'Your account does not have access. Please contact support.';
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() {
