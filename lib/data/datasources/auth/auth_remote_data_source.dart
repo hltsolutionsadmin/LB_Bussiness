@@ -49,7 +49,6 @@ class AuthRemoteDataSource {
     print('[API] Login Response: ${res.statusCode}');
     print('[API] Headers: ${res.headers.map}');
     print('[API] Body: ${res.data}');
-    // Try to read token from body first, then fallback to Authorization header
     String? token;
     final data = res.data;
     if (data is Map<String, dynamic>) {

@@ -4,6 +4,7 @@ import 'package:local_basket_business/presentation/screens/restaurant/mobile_log
 import 'package:local_basket_business/core/session/session_store.dart';
 import 'package:local_basket_business/di/locator.dart';
 import 'package:local_basket_business/domain/repositories/products/product_repository.dart';
+import 'package:local_basket_business/presentation/screens/terms/terms_and_conditions.dart';
 
 class ProfileTab extends StatelessWidget {
   const ProfileTab({super.key});
@@ -110,24 +111,8 @@ class ProfileTab extends StatelessWidget {
                     text: '10:00 AM - 11:00 PM',
                   ),
                   const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: () {},
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        foregroundColor: const Color(0xFFF97316),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: const Text(
-                        'Edit Profile',
-                        style: TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                  ),
+                  // Edit Profile button removed as per request
+                  const SizedBox.shrink(),
                 ],
               ),
             ),
@@ -153,7 +138,225 @@ class ProfileTab extends StatelessWidget {
                     iconColor: Colors.orange,
                     label: 'Restaurant Details',
                     description: 'Update restaurant information',
-                    onTap: () {},
+                    onTap: () async {
+                      final session = sl<SessionStore>();
+                      final user = session.user ?? <String, dynamic>{};
+                      final b2b = (user['b2bUnit'] is Map<String, dynamic>)
+                          ? user['b2bUnit'] as Map<String, dynamic>
+                          : const <String, dynamic>{};
+
+                      String readString(Map<String, dynamic> m, String key) {
+                        final v = m[key];
+                        if (v == null) return '';
+                        if (v is String && v.trim().isEmpty) return '';
+                        return v.toString();
+                      }
+
+                      final items = <MapEntry<String, String>>[];
+                      final businessName = session.businessName;
+                      if (businessName.trim().isNotEmpty) {
+                        items.add(MapEntry('Business Name', businessName));
+                      }
+                      final phoneRaw = session.primaryContact;
+                      if (phoneRaw.trim().isNotEmpty) {
+                        final phone = phoneRaw.startsWith('+')
+                            ? phoneRaw
+                            : '+91 $phoneRaw';
+                        items.add(MapEntry('Primary Contact', phone));
+                      }
+                      final gst = readString(b2b, 'gstNo');
+                      if (gst.isNotEmpty) items.add(MapEntry('GST No', gst));
+                      final email = readString(user, 'email');
+                      if (email.isNotEmpty) items.add(MapEntry('Email', email));
+                      final addr1 = readString(b2b, 'addressLine1');
+                      if (addr1.isNotEmpty) {
+                        items.add(MapEntry('Address Line 1', addr1));
+                      }
+                      final addr2 = readString(b2b, 'addressLine2');
+                      if (addr2.isNotEmpty) {
+                        items.add(MapEntry('Address Line 2', addr2));
+                      }
+                      final city = readString(b2b, 'city');
+                      if (city.isNotEmpty) items.add(MapEntry('City', city));
+                      final state = readString(b2b, 'state');
+                      if (state.isNotEmpty) items.add(MapEntry('State', state));
+                      final pincode = readString(b2b, 'pincode');
+                      if (pincode.isNotEmpty) {
+                        items.add(MapEntry('Pincode', pincode));
+                      }
+
+                      await showDialog(
+                        context: context,
+                        builder: (dCtx) {
+                          return Dialog(
+                            backgroundColor: Colors.transparent,
+                            insetPadding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 24,
+                            ),
+                            child: Container(
+                              padding: const EdgeInsets.all(0),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(22),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.15),
+                                    blurRadius: 30,
+                                    offset: const Offset(0, 10),
+                                  ),
+                                ],
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  // ---------- Premium Gradient Header ----------
+                                  Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 18,
+                                      horizontal: 20,
+                                    ),
+                                    decoration: const BoxDecoration(
+                                      gradient: LinearGradient(
+                                        colors: [
+                                          Color(0xFFEF5F0C),
+                                          Color(0xFFEF5F0C),
+                                        ],
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                      ),
+                                      borderRadius: BorderRadius.only(
+                                        topLeft: Radius.circular(22),
+                                        topRight: Radius.circular(22),
+                                      ),
+                                    ),
+                                    child: const Text(
+                                      "Restaurant Details",
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: 0.5,
+                                      ),
+                                    ),
+                                  ),
+
+                                  const SizedBox(height: 6),
+
+                                  // ---------- Content Body ----------
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 20,
+                                      vertical: 10,
+                                    ),
+                                    child: items.isEmpty
+                                        ? const Padding(
+                                            padding: EdgeInsets.symmetric(
+                                              vertical: 30,
+                                            ),
+                                            child: Text(
+                                              "No details available",
+                                              style: TextStyle(
+                                                fontSize: 16,
+                                                color: Colors.black54,
+                                              ),
+                                            ),
+                                          )
+                                        : SizedBox(
+                                            width: double.maxFinite,
+                                            child: ListView.separated(
+                                              shrinkWrap: true,
+                                              itemCount: items.length,
+                                              physics:
+                                                  const NeverScrollableScrollPhysics(),
+                                              separatorBuilder: (_, __) =>
+                                                  Divider(
+                                                    height: 18,
+                                                    thickness: 0.6,
+                                                    color: Colors.grey.shade300,
+                                                  ),
+                                              itemBuilder: (_, i) {
+                                                final e = items[i];
+                                                return Row(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  children: [
+                                                    SizedBox(
+                                                      width: 130,
+                                                      child: Text(
+                                                        e.key,
+                                                        style: const TextStyle(
+                                                          fontSize: 14,
+                                                          fontWeight:
+                                                              FontWeight.w600,
+                                                          color: Color(
+                                                            0xFF6B7280,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    const SizedBox(width: 12),
+                                                    Expanded(
+                                                      child: Text(
+                                                        e.value,
+                                                        style: const TextStyle(
+                                                          fontSize: 16,
+                                                          color: Color(
+                                                            0xFF111827,
+                                                          ),
+                                                          fontWeight:
+                                                              FontWeight.w500,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                );
+                                              },
+                                            ),
+                                          ),
+                                  ),
+
+                                  const SizedBox(height: 10),
+
+                                  // ---------- Footer Button ----------
+                                  Padding(
+                                    padding: const EdgeInsets.all(12.0),
+                                    child: SizedBox(
+                                      width: double.infinity,
+                                      child: TextButton(
+                                        style: TextButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(
+                                            vertical: 14,
+                                          ),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              14,
+                                            ),
+                                            side: const BorderSide(
+                                              color: Color(0xFFEF5F0C),
+                                            ),
+                                          ),
+                                        ),
+                                        onPressed: () => Navigator.pop(dCtx),
+                                        child: const Text(
+                                          'Close',
+                                          style: TextStyle(
+                                            color: Color(0xFFEF5F0C),
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      );
+                    },
                   ),
                   const Divider(height: 1),
                   _MenuItem(
@@ -380,6 +583,7 @@ class ProfileTab extends StatelessWidget {
                     },
                   ),
                   const Divider(height: 1),
+                  /*
                   _MenuItem(
                     icon: Icons.credit_card,
                     iconColor: Colors.green,
@@ -388,6 +592,8 @@ class ProfileTab extends StatelessWidget {
                     onTap: () {},
                   ),
                   const Divider(height: 1),
+                  */
+                  /*
                   _MenuItem(
                     icon: Icons.settings,
                     iconColor: Colors.grey,
@@ -396,6 +602,8 @@ class ProfileTab extends StatelessWidget {
                     onTap: () {},
                   ),
                   const Divider(height: 1),
+                  */
+                  /*
                   _MenuItem(
                     icon: Icons.help_outline,
                     iconColor: Colors.purple,
@@ -404,12 +612,21 @@ class ProfileTab extends StatelessWidget {
                     onTap: () {},
                   ),
                   const Divider(height: 1),
+                  */
                   _MenuItem(
                     icon: Icons.description,
                     iconColor: Colors.indigo,
                     label: 'Terms & Policies',
                     description: 'Read our terms and policies',
-                    onTap: () {},
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              const TermsAndConditionsScreen(),
+                        ),
+                      );
+                    },
                   ),
                 ],
               ),

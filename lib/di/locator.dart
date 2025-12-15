@@ -15,6 +15,7 @@ import 'package:local_basket_business/domain/repositories/auth/auth_repository.d
 import 'package:local_basket_business/domain/repositories/products/product_repository.dart';
 import 'package:local_basket_business/domain/repositories/orders/orders_repository.dart';
 import 'package:local_basket_business/domain/repositories/business/business_repository.dart';
+import 'package:local_basket_business/core/services/orders_poller.dart';
 
 final sl = GetIt.instance;
 
@@ -49,5 +50,10 @@ Future<void> setupLocator() async {
   sl.registerLazySingleton<OrdersRepository>(() => OrdersRepositoryImpl(sl()));
   sl.registerLazySingleton<BusinessRepository>(
     () => BusinessRepositoryImpl(sl()),
+  );
+
+  // Services
+  sl.registerLazySingleton<OrdersPoller>(
+    () => OrdersPoller(sl<OrdersRepository>(), sl<SessionStore>()),
   );
 }

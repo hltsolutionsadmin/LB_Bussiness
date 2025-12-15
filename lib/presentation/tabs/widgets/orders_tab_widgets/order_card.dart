@@ -42,27 +42,19 @@ class OrderCard extends StatelessWidget {
   Color _getStatusColor(String status) {
     switch (_stage(status)) {
       case 'new':
-        return Colors.blue;
+        return const Color(0xFF6366F1); // indigo
       case 'preparing':
-        return Colors.orange;
+        return const Color(0xFFF59E0B); // amber
       case 'ready':
-        return Colors.green;
+        return const Color(0xFF10B981); // emerald
       default:
         return Colors.grey;
     }
   }
 
-  IconData _getStatusIcon(String status) {
-    switch (_stage(status)) {
-      case 'new':
-        return Icons.access_time;
-      case 'preparing':
-        return Icons.restaurant;
-      case 'ready':
-        return Icons.check_circle_outline;
-      default:
-        return Icons.info_outline;
-    }
+  bool _isLoadingStage(String status) {
+    final st = _stage(status);
+    return st == 'new' || st == 'preparing';
   }
 
   @override
@@ -154,24 +146,34 @@ class OrderCard extends StatelessWidget {
 
   Widget _buildStatusBadge(String status) {
     final color = _getStatusColor(status);
+    final isLoading = _isLoadingStage(status);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withOpacity(0.08),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: color.withOpacity(0.25)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(_getStatusIcon(status), size: 14, color: color),
-          const SizedBox(width: 4),
+          SizedBox(
+            width: 14,
+            height: 14,
+            child: isLoading
+                ? CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(color),
+                  )
+                : Icon(Icons.check_circle_outline, size: 14, color: color),
+          ),
+          const SizedBox(width: 6),
           Flexible(
             child: Text(
               _label(status),
               style: TextStyle(
                 fontSize: 12,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w700,
                 color: color,
               ),
               overflow: TextOverflow.ellipsis,

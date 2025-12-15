@@ -139,10 +139,12 @@ class _RestaurantOnboardingScreenState
                               icon: Icons.email,
                               keyboardType: TextInputType.emailAddress,
                               validator: (v) {
-                                if (v == null || v.isEmpty)
+                                if (v == null || v.isEmpty) {
                                   return 'Please enter email';
-                                if (!v.contains('@'))
+                                }
+                                if (!v.contains('@')) {
                                   return 'Please enter a valid email';
+                                }
                                 return null;
                               },
                             ),
@@ -229,7 +231,7 @@ class _RestaurantOnboardingScreenState
 
   Widget _buildDropdown() {
     return DropdownButtonFormField<String>(
-      value: _selectedCuisine,
+      initialValue: _selectedCuisine,
       decoration: const InputDecoration(
         labelText: 'Cuisine Type',
         prefixIcon: Icon(Icons.fastfood, color: AppColors.orange600),

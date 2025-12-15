@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:local_basket_business/routes/app_router.dart';
 import 'package:local_basket_business/di/locator.dart';
+import 'package:local_basket_business/core/services/orders_poller.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -17,6 +18,8 @@ Future<void> main() async {
     await prefs.setBool(firstRunKey, true);
   }
   await setupLocator();
+  // Start global orders poller (1s interval) to show new-order popup anywhere
+  sl<OrdersPoller>().start();
   runApp(const App());
 }
 

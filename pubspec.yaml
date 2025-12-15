@@ -42,6 +42,7 @@ dev_dependencies:
 
 
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.13.1
   build_runner: ^2.10.4
   freezed: ^3.2.3
   json_serializable: ^6.11.2
@@ -52,4 +53,10 @@ flutter:
   assets:
     - .env
     - assets/sounds/hen.mp3
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: assets/jpg/ic_launcher.jpg
+  remove_alpha_ios: true
 
