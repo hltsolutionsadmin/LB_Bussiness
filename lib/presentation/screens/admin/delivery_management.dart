@@ -3,6 +3,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:local_basket_business/theme/app_colors.dart';
 import 'package:local_basket_business/widgets/glass_card.dart';
 import 'package:local_basket_business/widgets/search_bar_widget.dart';
+import 'package:local_basket_business/presentation/screens/admin/add_delivery_partner_screen.dart';
 
 class DeliveryManagementScreen extends StatefulWidget {
   final Function(String) onNavigate;
@@ -57,6 +58,23 @@ class _DeliveryManagementScreenState extends State<DeliveryManagementScreen> {
   Widget build(BuildContext context) {
     final partners = _filtered();
     return Scaffold(
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () async {
+          final result = await Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const AddDeliveryPartnerScreen()),
+          );
+          if (result != null && mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Delivery partner added successfully'),
+              ),
+            );
+            setState(() {});
+          }
+        },
+        icon: const Icon(Icons.add),
+        label: const Text('Add Partner'),
+      ),
       body: Container(
         color: Colors.white,
         child: SafeArea(

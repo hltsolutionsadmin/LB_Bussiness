@@ -7,6 +7,7 @@ import 'package:local_basket_business/data/datasources/auth/auth_remote_data_sou
 import 'package:local_basket_business/data/datasources/products/product_remote_data_source.dart';
 import 'package:local_basket_business/data/datasources/orders/orders_remote_data_source.dart';
 import 'package:local_basket_business/data/datasources/business/business_remote_data_source.dart';
+import 'package:local_basket_business/data/datasources/delivery/delivery_remote_data_source.dart';
 import 'package:local_basket_business/data/repositories/auth/auth_repository_impl.dart';
 import 'package:local_basket_business/data/repositories/products/product_repository_impl.dart';
 import 'package:local_basket_business/data/repositories/orders/orders_repository_impl.dart';
@@ -38,6 +39,9 @@ Future<void> setupLocator() async {
   );
   sl.registerLazySingleton<BusinessRemoteDataSource>(
     () => BusinessRemoteDataSource(sl(), sl()),
+  );
+  sl.registerLazySingleton<DeliveryRemoteDataSource>(
+    () => DeliveryRemoteDataSource(sl(), sl()),
   );
 
   // Repositories

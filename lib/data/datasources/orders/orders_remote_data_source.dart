@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:local_basket_business/core/network/dio_client.dart';
 import 'package:local_basket_business/core/storage/secure_storage.dart';
@@ -16,6 +17,7 @@ class OrdersRemoteDataSource {
         if (bearer != null && bearer.isNotEmpty)
           'Authorization': 'Bearer $bearer',
         'Content-Type': 'application/json',
+        'Accept': 'application/json',
       },
     );
   }
@@ -177,5 +179,134 @@ class OrdersRemoteDataSource {
         },
       ),
     );
+  }
+
+  Future<Map<String, dynamic>> getOrdersReportView({
+    required String frequency,
+    required String status,
+    required int businessId,
+    required String fromDate,
+    required String toDate,
+    int page = 0,
+    int size = 10,
+  }) async {
+    final token = await _storage.readToken();
+    if (kDebugMode) {
+      debugPrint(
+        '[API] Orders Report View -> GET /order/api/orders/user/filter?frequency=$frequency&status=$status&businessId=$businessId&fromDate=$fromDate&toDate=$toDate&page=$page&size=$size',
+      );
+    }
+    Response res;
+    try {
+      res = await _client.dio.get(
+        '/order/api/orders/user/filter',
+        queryParameters: {
+          'frequency': frequency,
+          'status': status,
+          'businessId': businessId,
+          'fromDate': fromDate,
+          'toDate': toDate,
+          'page': page,
+          'size': size,
+        },
+        options: _authOptions(token),
+      );
+    } on DioException catch (e) {
+      if (kDebugMode) {
+        debugPrint(
+          '[API] Report View primary path failed: ${e.response?.statusCode}',
+        );
+      }
+      // Fallback to alternate gateway path
+      res = await _client.dio.get(
+        '/api/order/api/orders/user/filter',
+        queryParameters: {
+          'frequency': frequency,
+          'status': status,
+          'businessId': businessId,
+          'fromDate': fromDate,
+          'toDate': toDate,
+          'page': page,
+          'size': size,
+        },
+        options: _authOptions(token),
+      );
+    }
+    final data = res.data;
+    if (data is Map<String, dynamic>) return data;
+    return {'data': data};
+  }
+
+  Future<String> downloadOrdersExcel({
+    required String orderStatus,
+    required String fromDate,
+    required String toDate,
+    required int restaurantId,
+    int page = 0,
+    int size = 10,
+  }) async {
+    final token = await _storage.readToken();
+    if (kDebugMode) {
+      debugPrint(
+        '[API] Download Orders Excel -> GET /order/api/orders/user/filter/excel?orderStatus=$orderStatus&fromDate=$fromDate&toDate=$toDate&page=$page&size=$size&restaurantId=$restaurantId',
+      );
+    }
+    Response res;
+    try {
+      res = await _client.dio.get(
+        '/api/order/api/orders/user/filter/excel',
+        queryParameters: {
+          'orderStatus': orderStatus,
+          'fromDate': fromDate,
+          'toDate': toDate,
+          'page': page,
+          'size': size,
+          'restaurantId': restaurantId,
+        },
+        options: Options(
+          responseType: ResponseType.bytes,
+          headers: {
+            if (token != null && token.isNotEmpty)
+              'Authorization': 'Bearer $token',
+            'Accept':
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/octet-stream',
+          },
+        ),
+      );
+    } on DioException catch (e) {
+      if (kDebugMode) {
+        debugPrint(
+          '[API] Excel primary path failed: ${e.response?.statusCode}',
+        );
+      }
+      res = await _client.dio.get(
+        '/order/api/orders/user/filter/excel',
+        queryParameters: {
+          'orderStatus': orderStatus,
+          'fromDate': fromDate,
+          'toDate': toDate,
+          'page': page,
+          'size': size,
+          'restaurantId': restaurantId,
+        },
+        options: Options(
+          responseType: ResponseType.bytes,
+          headers: {
+            if (token != null && token.isNotEmpty)
+              'Authorization': 'Bearer $token',
+            'Accept':
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/octet-stream',
+          },
+        ),
+      );
+    }
+
+    final bytes = res.data as List<int>;
+    final dir = Directory.systemTemp.createTempSync('lb_reports_');
+    final path =
+        '${dir.path}/orders_${DateTime.now().millisecondsSinceEpoch}.xlsx';
+    final file = File(path);
+    await file.writeAsBytes(bytes, flush: true);
+    return file.path;
   }
 }

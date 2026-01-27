@@ -268,7 +268,7 @@ class _OrdersTabState extends State<OrdersTab> {
                   if (filteredOrders.isEmpty) {
                     final title = _selectedFilter == 'all'
                         ? 'No orders yet'
-                        : 'No ${_selectedFilter} orders';
+                        : 'No $_selectedFilter orders';
                     final subtitle = _selectedFilter == 'all'
                         ? 'Orders will appear here as customers place them.'
                         : 'Try switching filters or refresh to check again.';
