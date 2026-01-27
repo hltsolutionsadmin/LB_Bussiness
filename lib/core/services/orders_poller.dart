@@ -43,7 +43,7 @@ class OrdersPoller {
       );
 
       final currentIds = page.items.map((e) => e['id'].toString()).toSet();
-      bool _isNewStage(Map<String, dynamic> o) {
+      bool isNewStage(Map<String, dynamic> o) {
         final s = (o['orderStatus']?.toString() ?? '').toLowerCase();
         return s.contains('new') || s.contains('place') || s.contains('accept');
       }
@@ -52,7 +52,7 @@ class OrdersPoller {
         final newOrders = page.items
             .where((o) => !_previousOrderIds.contains(o['id'].toString()))
             .toList();
-        final hasAnyNewStage = page.items.any(_isNewStage);
+        final hasAnyNewStage = page.items.any(isNewStage);
         if (newOrders.isNotEmpty) {
           await _playLoop();
           if (!_showingDialog) {

@@ -6,7 +6,7 @@ import 'package:local_basket_business/presentation/screens/admin/delivery_manage
 import 'package:local_basket_business/presentation/screens/admin/delivery_partner_reports.dart';
 import 'package:local_basket_business/presentation/screens/admin/admin_settings.dart';
 import 'package:local_basket_business/widgets/bottom_nav_bar.dart';
-import 'package:local_basket_business/presentation/screens/admin/restaurant_reports.dart';
+import 'package:local_basket_business/presentation/screens/admin/orders_reports_screen.dart';
 
 class AdminHomeScreen extends StatefulWidget {
   const AdminHomeScreen({super.key});
@@ -41,11 +41,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
             }
             if (route == 'restaurant-reports') {
               Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => RestaurantReportsScreen(
-                    onBack: () => Navigator.of(context).pop(),
-                  ),
-                ),
+                MaterialPageRoute(builder: (_) => const OrdersReportsScreen()),
               );
               return;
             }
