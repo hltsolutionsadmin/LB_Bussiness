@@ -5,6 +5,7 @@ import 'package:local_basket_business/core/session/session_store.dart';
 import 'package:local_basket_business/di/locator.dart';
 import 'package:local_basket_business/domain/repositories/products/product_repository.dart';
 import 'package:local_basket_business/presentation/screens/terms/terms_and_conditions.dart';
+import 'package:local_basket_business/core/storage/secure_storage.dart';
 
 class ProfileTab extends StatelessWidget {
   const ProfileTab({super.key});
@@ -671,7 +672,41 @@ class ProfileTab extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: () {
+                onPressed: () async {
+                  final confirm = await showDialog<bool>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: const Text('Logout'),
+                      content: const Text(
+                        'Are you sure you want to logout from this account?',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(ctx).pop(false),
+                          child: const Text('Cancel'),
+                        ),
+                        ElevatedButton(
+                          onPressed: () => Navigator.of(ctx).pop(true),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.red,
+                            foregroundColor: Colors.white,
+                          ),
+                          child: const Text('Logout'),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (confirm != true) return;
+
+                  try {
+                    await sl<AppSecureStorage>().clearToken();
+                  } catch (_) {}
+
+                  try {
+                    sl<SessionStore>().clear();
+                  } catch (_) {}
+
+                  if (!context.mounted) return;
                   Navigator.pushAndRemoveUntil(
                     context,
                     MaterialPageRoute(
