@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:local_basket_business/theme/app_colors.dart';
-import 'package:local_basket_business/presentation/screens/admin/restaurant_reports.dart';
 import 'package:local_basket_business/widgets/glass_card.dart';
 import 'package:local_basket_business/widgets/search_bar_widget.dart';
+import 'package:get_it/get_it.dart';
+import 'package:local_basket_business/data/datasources/business/business_remote_data_source.dart';
+import 'package:local_basket_business/presentation/screens/admin/orders_reports_screen.dart';
 
 class RestaurantManagementScreen extends StatefulWidget {
   final Function(String) onNavigate;
@@ -124,49 +126,82 @@ class _RestaurantManagementScreenState
   String _selectedFilter = 'All';
 
   final List<String> _filters = const ['All', 'Active', 'Pending', 'Inactive'];
+  final List<_Restaurant> _all = [];
+  bool _loading = true;
 
-  // Dummy data
-  final List<_Restaurant> _all = [
-    _Restaurant(
-      name: 'Spice Garden',
-      cuisine: 'North Indian',
-      status: 'Active',
-      rating: 4.6,
-      totalOrders: 1240,
-      revenue: 425000,
-      ownerName: 'Arjun Mehta',
-      phone: '9876543210',
-      email: 'spice@example.com',
-      address: 'MG Road, Bengaluru',
-      imageUrl: 'https://images.unsplash.com/photo-1559339352-11d035aa65de',
-    ),
-    _Restaurant(
-      name: 'Noodle Hub',
-      cuisine: 'Chinese',
-      status: 'Pending',
-      rating: 4.2,
-      totalOrders: 520,
-      revenue: 145000,
-      ownerName: 'Li Wei',
-      phone: '9876501234',
-      email: 'noodle@example.com',
-      address: 'Banashankari, Bengaluru',
-      imageUrl: 'https://images.unsplash.com/photo-1544025162-d76694265947',
-    ),
-    _Restaurant(
-      name: "Roma's Pizzeria",
-      cuisine: 'Italian',
-      status: 'Inactive',
-      rating: 4.0,
-      totalOrders: 310,
-      revenue: 98000,
-      ownerName: 'Marco Rossi',
-      phone: '9000011111',
-      email: 'roma@example.com',
-      address: 'HSR Layout, Bengaluru',
-      imageUrl: 'https://picsum.photos/seed/pizzeria/300/200',
-    ),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _loadRestaurants();
+  }
+
+  Future<void> _loadRestaurants() async {
+    setState(() => _loading = true);
+    try {
+      final ds = GetIt.I<BusinessRemoteDataSource>();
+      final list = await ds.listBusinesses();
+      final mapped = list.map<_Restaurant>((raw) {
+        final m = Map<String, dynamic>.from(raw);
+        String str(dynamic v) => v?.toString() ?? '';
+        double toDouble(dynamic v) {
+          if (v is num) return v.toDouble();
+          return double.tryParse(str(v)) ?? 0.0;
+        }
+
+        int toInt(dynamic v) {
+          if (v is num) return v.toInt();
+          return int.tryParse(str(v)) ?? 0;
+        }
+
+        final status = str(m['status']).isNotEmpty
+            ? str(m['status'])
+            : ((m['enabled'] == true) ? 'Active' : 'Inactive');
+        final name =
+            str(
+              m['businessName'].toString().isNotEmpty
+                  ? m['businessName']
+                  : m['name'],
+            ).isNotEmpty
+            ? str(m['businessName'] ?? m['name'])
+            : 'N/A';
+        return _Restaurant(
+          id: toInt(m['id']),
+          name: name,
+          cuisine: str(m['categoryName'] ?? m['cuisine']).isEmpty
+              ? '—'
+              : str(m['categoryName'] ?? m['cuisine']),
+          status: status,
+          rating: toDouble(m['rating']),
+          totalOrders: toInt(m['totalOrders']),
+          revenue: toDouble(m['revenue']),
+          ownerName: str(m['ownerName'] ?? m['contactPerson']).isEmpty
+              ? '—'
+              : str(m['ownerName'] ?? m['contactPerson']),
+          phone: str(m['contactNumber'] ?? m['phone']).isEmpty
+              ? '—'
+              : str(m['contactNumber'] ?? m['phone']),
+          email: str(m['email']).isEmpty ? '—' : str(m['email']),
+          address: str(m['addressLine1'] ?? m['address']).isEmpty
+              ? '—'
+              : str(m['addressLine1'] ?? m['address']),
+          imageUrl: str(m['imageUrl']),
+        );
+      }).toList();
+      if (!mounted) return;
+      setState(() {
+        _all
+          ..clear()
+          ..addAll(mapped);
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to load restaurants')),
+      );
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -196,7 +231,9 @@ class _RestaurantManagementScreenState
                         .slideY(begin: -0.2, end: 0, duration: 300.ms),
               ),
               Expanded(
-                child: restaurants.isEmpty
+                child: _loading
+                    ? const Center(child: CircularProgressIndicator())
+                    : restaurants.isEmpty
                     ? _EmptyState(
                         icon: Icons.restaurant,
                         title: 'No Restaurants Found',
@@ -212,6 +249,7 @@ class _RestaurantManagementScreenState
                         itemBuilder: (context, index) => _RestaurantCard(
                           data: restaurants[index],
                           onNavigate: widget.onNavigate,
+                          onUpdated: _loadRestaurants,
                           index: index,
                         ),
                       ),
@@ -270,10 +308,12 @@ class _RestaurantManagementScreenState
 class _RestaurantCard extends StatelessWidget {
   final _Restaurant data;
   final Function(String) onNavigate;
+  final VoidCallback onUpdated;
   final int index;
   const _RestaurantCard({
     required this.data,
     required this.onNavigate,
+    required this.onUpdated,
     required this.index,
   });
 
@@ -386,7 +426,12 @@ class _RestaurantCard extends StatelessWidget {
                   Container(width: 1, height: 30, color: AppColors.glassBorder),
                   _Stat(label: 'Owner', value: data.ownerName),
                   Container(width: 1, height: 30, color: AppColors.glassBorder),
-                  _Stat(label: 'Phone', value: data.phone.substring(0, 10)),
+                  _Stat(
+                    label: 'Phone',
+                    value: (data.phone.length > 10)
+                        ? data.phone.substring(0, 10)
+                        : data.phone,
+                  ),
                 ],
               ),
             ],
@@ -402,14 +447,15 @@ class _RestaurantCard extends StatelessWidget {
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (context) => _DetailsSheet(data: data),
+      builder: (context) => _DetailsSheet(data: data, onUpdated: onUpdated),
     );
   }
 }
 
 class _DetailsSheet extends StatelessWidget {
   final _Restaurant data;
-  const _DetailsSheet({required this.data});
+  final VoidCallback onUpdated;
+  const _DetailsSheet({required this.data, required this.onUpdated});
 
   @override
   Widget build(BuildContext context) {
@@ -529,8 +575,9 @@ class _DetailsSheet extends StatelessWidget {
                       Future.microtask(() {
                         nav.push(
                           MaterialPageRoute(
-                            builder: (_) => RestaurantReportsScreen(
-                              onBack: () => nav.pop(),
+                            builder: (_) => OrdersReportsScreen(
+                              initialBusinessId: data.id,
+                              autoLoad: true,
                             ),
                           ),
                         );
@@ -546,17 +593,36 @@ class _DetailsSheet extends StatelessWidget {
                 const SizedBox(width: 12),
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            data.status == 'Active'
-                                ? 'Restaurant deactivated'
-                                : 'Restaurant activated',
-                          ),
-                        ),
-                      );
+                    onPressed: () async {
+                      final enabled = data.status != 'Active';
+                      try {
+                        await GetIt.I<BusinessRemoteDataSource>()
+                            .setBusinessEnabled(
+                              businessId: data.id,
+                              enabled: enabled,
+                            );
+                        if (context.mounted) {
+                          Navigator.pop(context);
+                          onUpdated();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                enabled
+                                    ? 'Restaurant activated'
+                                    : 'Restaurant deactivated',
+                              ),
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Failed to update status'),
+                            ),
+                          );
+                        }
+                      }
                     },
                     icon: Icon(
                       data.status == 'Active' ? Icons.pause : Icons.play_arrow,
@@ -641,6 +707,7 @@ class _Stat extends StatelessWidget {
 }
 
 class _Restaurant {
+  final int id;
   final String name;
   final String cuisine;
   final String status;
@@ -654,6 +721,7 @@ class _Restaurant {
   final String imageUrl;
 
   _Restaurant({
+    required this.id,
     required this.name,
     required this.cuisine,
     required this.status,

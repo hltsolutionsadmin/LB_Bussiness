@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:local_basket_business/theme/app_colors.dart';
+import 'package:dio/dio.dart';
+import 'package:local_basket_business/core/network/dio_client.dart';
+import 'package:local_basket_business/core/storage/secure_storage.dart';
+import 'package:local_basket_business/data/datasources/business/business_remote_data_source.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:local_basket_business/presentation/widgets/map_picker.dart';
 
 class RestaurantOnboardingScreen extends StatefulWidget {
   final VoidCallback onBack;
@@ -21,6 +27,16 @@ class _RestaurantOnboardingScreenState
   final _addressController = TextEditingController();
   final _gstController = TextEditingController();
   final _fssaiController = TextEditingController();
+  final _cityController = TextEditingController();
+  final _countryController = TextEditingController(text: 'india');
+  final _postalController = TextEditingController();
+  final _latitudeController = TextEditingController();
+  final _longitudeController = TextEditingController();
+  final _categoryIdController = TextEditingController(text: '1');
+  final _loginTimeController = TextEditingController();
+  final _logoutTimeController = TextEditingController();
+
+  late final BusinessRemoteDataSource _remote;
 
   String _selectedCuisine = 'North Indian';
   bool _isLoading = false;
@@ -37,6 +53,12 @@ class _RestaurantOnboardingScreenState
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _remote = BusinessRemoteDataSource(DioClient(Dio()), AppSecureStorage());
+  }
+
+  @override
   void dispose() {
     _nameController.dispose();
     _ownerController.dispose();
@@ -45,13 +67,55 @@ class _RestaurantOnboardingScreenState
     _addressController.dispose();
     _gstController.dispose();
     _fssaiController.dispose();
+    _cityController.dispose();
+    _countryController.dispose();
+    _postalController.dispose();
+    _latitudeController.dispose();
+    _longitudeController.dispose();
+    _categoryIdController.dispose();
+    _loginTimeController.dispose();
+    _logoutTimeController.dispose();
     super.dispose();
   }
 
   Future<void> _submitForm() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
-    await Future.delayed(const Duration(milliseconds: 600));
+    try {
+      await _remote.onboardBusiness(
+        businessName: _nameController.text.trim(),
+        categoryId: _categoryIdController.text.trim(),
+        addressLine1: _addressController.text.trim(),
+        city: _cityController.text.trim(),
+        country: _countryController.text.trim(),
+        postalCode: _postalController.text.trim(),
+        latitude: _latitudeController.text.trim(),
+        longitude: _longitudeController.text.trim(),
+        contactNumber: _phoneController.text.trim(),
+        gstNumber: _gstController.text.trim().isEmpty
+            ? null
+            : _gstController.text.trim(),
+        fssaiNumber: _fssaiController.text.trim().isEmpty
+            ? null
+            : _fssaiController.text.trim(),
+        loginTime: _loginTimeController.text.trim().isEmpty
+            ? null
+            : _loginTimeController.text.trim(),
+        logoutTime: _logoutTimeController.text.trim().isEmpty
+            ? null
+            : _logoutTimeController.text.trim(),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to add restaurant: $e'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      setState(() => _isLoading = false);
+      return;
+    }
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -67,7 +131,7 @@ class _RestaurantOnboardingScreenState
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(gradient: AppColors.sunsetGradient),
+        decoration: BoxDecoration(color: AppColors.glass),
         child: SafeArea(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(16),
@@ -169,6 +233,119 @@ class _RestaurantOnboardingScreenState
                                   : null,
                             ),
                             const SizedBox(height: 16),
+                            _buildTextField(
+                              controller: _cityController,
+                              label: 'City',
+                              icon: Icons.location_city,
+                              validator: (v) => v == null || v.isEmpty
+                                  ? 'Please enter city'
+                                  : null,
+                            ),
+                            const SizedBox(height: 16),
+                            _buildTextField(
+                              controller: _countryController,
+                              label: 'Country',
+                              icon: Icons.flag,
+                              validator: (v) => v == null || v.isEmpty
+                                  ? 'Please enter country'
+                                  : null,
+                            ),
+                            const SizedBox(height: 16),
+                            _buildTextField(
+                              controller: _postalController,
+                              label: 'Postal Code',
+                              icon: Icons.markunread_mailbox,
+                              keyboardType: TextInputType.number,
+                              validator: (v) => v == null || v.isEmpty
+                                  ? 'Please enter postal code'
+                                  : null,
+                            ),
+                            const SizedBox(height: 16),
+                            _buildTextField(
+                              controller: _categoryIdController,
+                              label: 'Category ID',
+                              icon: Icons.category,
+                              keyboardType: TextInputType.number,
+                              validator: (v) => v == null || v.isEmpty
+                                  ? 'Please enter category id'
+                                  : null,
+                            ),
+                            const SizedBox(height: 16),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _buildTextField(
+                                    controller: _latitudeController,
+                                    label: 'Latitude',
+                                    icon: Icons.my_location,
+                                    keyboardType:
+                                        const TextInputType.numberWithOptions(
+                                          decimal: true,
+                                        ),
+                                    validator: (v) => v == null || v.isEmpty
+                                        ? 'Enter latitude'
+                                        : null,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: _buildTextField(
+                                    controller: _longitudeController,
+                                    label: 'Longitude',
+                                    icon: Icons.explore,
+                                    keyboardType:
+                                        const TextInputType.numberWithOptions(
+                                          decimal: true,
+                                        ),
+                                    validator: (v) => v == null || v.isEmpty
+                                        ? 'Enter longitude'
+                                        : null,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: TextButton.icon(
+                                onPressed: () async {
+                                  final result = await Navigator.of(context)
+                                      .push<LatLng?>(
+                                        MaterialPageRoute(
+                                          builder: (_) {
+                                            final lat = double.tryParse(
+                                              _latitudeController.text.trim(),
+                                            );
+                                            final lng = double.tryParse(
+                                              _longitudeController.text.trim(),
+                                            );
+                                            final initial =
+                                                (lat != null && lng != null)
+                                                ? LatLng(lat, lng)
+                                                : const LatLng(
+                                                    17.686001,
+                                                    83.008781,
+                                                  );
+                                            return MapPicker(initial: initial);
+                                          },
+                                        ),
+                                      );
+                                  if (result != null) {
+                                    _latitudeController.text = result.latitude
+                                        .toStringAsFixed(6);
+                                    _longitudeController.text = result.longitude
+                                        .toStringAsFixed(6);
+                                    setState(() {});
+                                  }
+                                },
+                                icon: const Icon(
+                                  Icons.map,
+                                  color: AppColors.orange600,
+                                ),
+                                label: const Text('Pick from Map'),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
                             _buildDropdown(),
                             const SizedBox(height: 16),
                             _buildTextField(
@@ -181,6 +358,26 @@ class _RestaurantOnboardingScreenState
                               controller: _fssaiController,
                               label: 'FSSAI Number (Optional)',
                               icon: Icons.shield,
+                            ),
+                            const SizedBox(height: 16),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _buildTextField(
+                                    controller: _loginTimeController,
+                                    label: 'Login Time (HH:mm)',
+                                    icon: Icons.login,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: _buildTextField(
+                                    controller: _logoutTimeController,
+                                    label: 'Logout Time (HH:mm)',
+                                    icon: Icons.logout,
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),
