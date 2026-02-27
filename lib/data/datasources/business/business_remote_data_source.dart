@@ -19,6 +19,32 @@ class BusinessRemoteDataSource {
     );
   }
 
+  Future<void> blockBusiness({required int businessId}) async {
+    final token = await _storage.readToken();
+    if (kDebugMode) {
+      debugPrint(
+        '[API] Block Business -> PUT /usermgmt/business/block/$businessId',
+      );
+    }
+    await _client.dio.put(
+      '/usermgmt/business/block/$businessId',
+      options: _authOptions(token),
+    );
+  }
+
+  Future<void> unblockBusiness({required int businessId}) async {
+    final token = await _storage.readToken();
+    if (kDebugMode) {
+      debugPrint(
+        '[API] Unblock Business -> PUT /usermgmt/business/unblock/$businessId',
+      );
+    }
+    await _client.dio.put(
+      '/usermgmt/business/unblock/$businessId',
+      options: _authOptions(token),
+    );
+  }
+
   Future<void> setBusinessEnabled({
     required int businessId,
     required bool enabled,
@@ -38,18 +64,14 @@ class BusinessRemoteDataSource {
 
   Future<void> onboardBusiness({
     required String businessName,
-    required String categoryId,
     required String addressLine1,
     required String city,
+    required String state,
     required String country,
     required String postalCode,
     required String latitude,
     required String longitude,
     required String contactNumber,
-    String? gstNumber,
-    String? fssaiNumber,
-    String? loginTime,
-    String? logoutTime,
   }) async {
     final token = await _storage.readToken();
     if (kDebugMode) {
@@ -59,34 +81,15 @@ class BusinessRemoteDataSource {
     final form = FormData();
     form.fields
       ..add(MapEntry('businessName', businessName))
-      ..add(MapEntry('categoryId', categoryId))
+      ..add(const MapEntry('categoryId', '1'))
       ..add(MapEntry('addressLine1', addressLine1))
       ..add(MapEntry('city', city))
+      ..add(MapEntry('state', state))
       ..add(MapEntry('country', country))
       ..add(MapEntry('postalCode', postalCode))
       ..add(MapEntry('latitude', latitude))
       ..add(MapEntry('longitude', longitude))
       ..add(MapEntry('contactNumber', contactNumber));
-
-    int attrIndex = 0;
-    void addAttr(String name, String value) {
-      form.fields.add(MapEntry('attributes[$attrIndex].attributeName', name));
-      form.fields.add(MapEntry('attributes[$attrIndex].attributeValue', value));
-      attrIndex += 1;
-    }
-
-    if (gstNumber != null && gstNumber.isNotEmpty) {
-      addAttr('GSTNumber', gstNumber);
-    }
-    if (fssaiNumber != null && fssaiNumber.isNotEmpty) {
-      addAttr('FSSAINumber', fssaiNumber);
-    }
-    if (loginTime != null && loginTime.isNotEmpty) {
-      addAttr('loginTime', loginTime);
-    }
-    if (logoutTime != null && logoutTime.isNotEmpty) {
-      addAttr('logoutTime', logoutTime);
-    }
 
     await _client.dio.post(
       '/usermgmt/business/onboard',
@@ -95,7 +98,6 @@ class BusinessRemoteDataSource {
         headers: {
           if (token != null && token.isNotEmpty)
             'Authorization': 'Bearer $token',
-          'X-API-KEY': '027e0b4f-5d91-4399-9306-75401b53e865',
           'Content-Type': 'multipart/form-data',
         },
       ),

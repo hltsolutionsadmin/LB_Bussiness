@@ -594,22 +594,23 @@ class _DetailsSheet extends StatelessWidget {
                 Expanded(
                   child: ElevatedButton.icon(
                     onPressed: () async {
-                      final enabled = data.status != 'Active';
+                      final shouldUnblock = data.status != 'Active';
                       try {
-                        await GetIt.I<BusinessRemoteDataSource>()
-                            .setBusinessEnabled(
-                              businessId: data.id,
-                              enabled: enabled,
-                            );
+                        final ds = GetIt.I<BusinessRemoteDataSource>();
+                        if (shouldUnblock) {
+                          await ds.unblockBusiness(businessId: data.id);
+                        } else {
+                          await ds.blockBusiness(businessId: data.id);
+                        }
                         if (context.mounted) {
                           Navigator.pop(context);
                           onUpdated();
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
                               content: Text(
-                                enabled
-                                    ? 'Restaurant activated'
-                                    : 'Restaurant deactivated',
+                                shouldUnblock
+                                    ? 'Restaurant unblocked'
+                                    : 'Restaurant blocked',
                               ),
                             ),
                           );

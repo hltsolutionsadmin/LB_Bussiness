@@ -3,10 +3,86 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:local_basket_business/theme/app_colors.dart';
 import 'package:local_basket_business/widgets/glass_card.dart';
 import 'package:local_basket_business/widgets/stat_card.dart';
+import 'package:get_it/get_it.dart';
+import 'package:intl/intl.dart';
+import 'package:local_basket_business/data/datasources/orders/orders_remote_data_source.dart';
+import 'package:local_basket_business/data/datasources/business/business_remote_data_source.dart';
+import 'package:local_basket_business/data/datasources/delivery/delivery_remote_data_source.dart';
 
-class AdminDashboardScreen extends StatelessWidget {
+class AdminDashboardScreen extends StatefulWidget {
   final Function(String) onNavigate;
   const AdminDashboardScreen({super.key, required this.onNavigate});
+
+  @override
+  State<AdminDashboardScreen> createState() => _AdminDashboardScreenState();
+}
+
+class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
+  bool _loadingStats = true;
+  int _totalOrders = 0;
+  double _revenue = 0;
+  int _restaurants = 0;
+  int _partners = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadStats();
+  }
+
+  String _fmt(DateTime d) => DateFormat('yyyy-MM-dd').format(d);
+
+  Future<void> _loadStats() async {
+    setState(() => _loadingStats = true);
+    try {
+      final now = DateTime.now();
+      final from = now.subtract(const Duration(days: 7));
+
+      final ordersDs = GetIt.I<OrdersRemoteDataSource>();
+      final businessDs = GetIt.I<BusinessRemoteDataSource>();
+      final deliveryDs = GetIt.I<DeliveryRemoteDataSource>();
+
+      final summary = await ordersDs.getAdminOverallReport(
+        period: 'weekly',
+        fromDate: _fmt(from),
+        toDate: _fmt(now),
+      );
+
+      num toNum(dynamic v) {
+        if (v is num) return v;
+        return num.tryParse(v?.toString() ?? '') ?? 0;
+      }
+
+      final revenue = summary.fold<double>(
+        0,
+        (sum, e) =>
+            sum +
+            toNum(e['revenue'] ?? e['totalRevenue'] ?? e['amount']).toDouble(),
+      );
+      final ordersCount = summary.fold<int>(
+        0,
+        (sum, e) =>
+            sum +
+            toNum(e['ordersCount'] ?? e['orderCount'] ?? e['count']).toInt(),
+      );
+
+      final businesses = await businessDs.listBusinesses();
+      final partners = await deliveryDs.listPartnersPaged(page: 0, size: 1);
+
+      if (!mounted) return;
+      setState(() {
+        _revenue = revenue;
+        _totalOrders = ordersCount;
+        _restaurants = businesses.length;
+        // We don't have totalElements yet; show at least current page size.
+        _partners = partners.length;
+      });
+    } catch (_) {
+      // keep prior values
+    } finally {
+      if (mounted) setState(() => _loadingStats = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -16,7 +92,7 @@ class AdminDashboardScreen extends StatelessWidget {
         child: SafeArea(
           child: RefreshIndicator(
             onRefresh: () async {
-              await Future.delayed(500.ms);
+              await _loadStats();
             },
             child: SingleChildScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
@@ -118,12 +194,6 @@ class AdminDashboardScreen extends StatelessWidget {
   }
 
   Widget _buildQuickStats(BuildContext context) {
-    // Dummy values
-    final totalOrders = 15230;
-    final revenue = 734500;
-    final restaurants = 128;
-    final partners = 412;
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -146,27 +216,29 @@ class AdminDashboardScreen extends StatelessWidget {
           children: [
             StatCard(
               title: 'Total Orders',
-              value: _formatNumber(totalOrders),
+              value: _loadingStats ? '—' : _formatNumber(_totalOrders),
               icon: Icons.shopping_bag,
               iconColor: AppColors.orange600,
               subtitle: '+12%',
             ),
             StatCard(
               title: 'Revenue',
-              value: '₹${_formatNumber(revenue)}',
+              value: _loadingStats
+                  ? '—'
+                  : '₹${_formatNumber(_revenue.toInt())}',
               icon: Icons.currency_rupee,
               iconColor: AppColors.success,
               subtitle: '+23%',
             ),
             StatCard(
               title: 'Restaurants',
-              value: '$restaurants',
+              value: _loadingStats ? '—' : '$_restaurants',
               icon: Icons.restaurant,
               iconColor: AppColors.info,
             ),
             StatCard(
               title: 'Delivery Partners',
-              value: '$partners',
+              value: _loadingStats ? '—' : '$_partners',
               icon: Icons.delivery_dining,
               iconColor: AppColors.warning,
             ),
@@ -196,21 +268,28 @@ class AdminDashboardScreen extends StatelessWidget {
                     icon: Icons.add_business,
                     title: 'Onboard Restaurant',
                     subtitle: 'Add a new restaurant to the platform',
-                    onTap: () => onNavigate('onboarding'),
+                    onTap: () => widget.onNavigate('onboarding'),
                   ),
                   const Divider(color: Color(0x33FFFFFF), height: 1),
                   _buildActionTile(
                     icon: Icons.person_add,
                     title: 'Add Delivery Partner',
                     subtitle: 'Register a new delivery partner',
-                    onTap: () => onNavigate('delivery'),
+                    onTap: () => widget.onNavigate('delivery'),
                   ),
                   const Divider(color: Color(0x33FFFFFF), height: 1),
                   _buildActionTile(
                     icon: Icons.assessment,
                     title: 'View Reports',
                     subtitle: 'Check detailed analytics and reports',
-                    onTap: () => onNavigate('restaurant-reports'),
+                    onTap: () => widget.onNavigate('restaurant-reports'),
+                  ),
+                  const Divider(color: Color(0x33FFFFFF), height: 1),
+                  _buildActionTile(
+                    icon: Icons.local_offer,
+                    title: 'Offers',
+                    subtitle: 'Create and manage promotional offers',
+                    onTap: () => widget.onNavigate('offers'),
                   ),
                 ],
               ),

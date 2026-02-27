@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'dart:io';
 import 'package:get_it/get_it.dart';
 import 'package:intl/intl.dart';
 import 'package:local_basket_business/data/datasources/business/business_remote_data_source.dart';
 import 'package:local_basket_business/data/datasources/orders/orders_remote_data_source.dart';
+import 'package:open_filex/open_filex.dart';
+import 'package:path_provider/path_provider.dart';
 
 class OrdersReportsScreen extends StatefulWidget {
   final int? initialBusinessId;
@@ -35,6 +38,9 @@ class _OrdersReportsScreenState extends State<OrdersReportsScreen>
 
   bool _loading = false;
   Map<String, dynamic>? _report;
+  List<Map<String, dynamic>> _summaryRows = const [];
+  double _summaryRevenue = 0;
+  int _summaryOrdersCount = 0;
 
   late AnimationController _animCtrl;
   late Animation<double> _fadeAnim;
@@ -63,9 +69,12 @@ class _OrdersReportsScreenState extends State<OrdersReportsScreen>
       final list = await ds.listBusinesses();
 
       setState(() {
-        _businesses = list;
-        _selectedBusinessId =
-            widget.initialBusinessId ?? (list.first['id'] as num?)?.toInt();
+        _businesses = [
+          {'id': 0, 'businessName': 'Overall'},
+          ...list,
+        ];
+        final initial = widget.initialBusinessId;
+        _selectedBusinessId = initial ?? 0;
       });
 
       if (widget.autoLoad) _loadReport();
@@ -94,17 +103,62 @@ class _OrdersReportsScreenState extends State<OrdersReportsScreen>
 
     try {
       final ds = GetIt.I<OrdersRemoteDataSource>();
-      final res = await ds.getOrdersReportView(
-        frequency: _frequency,
-        status: _status,
-        businessId: _selectedBusinessId!,
-        fromDate: DateFormat('yyyy-MM-dd').format(_from),
-        toDate: DateFormat('yyyy-MM-dd').format(_to),
-        page: _page,
-        size: _size,
+
+      final from = DateFormat('yyyy-MM-dd').format(_from);
+      final to = DateFormat('yyyy-MM-dd').format(_to);
+      final period = _frequency.toLowerCase();
+
+      final int businessId = _selectedBusinessId!;
+      final summary = businessId == 0
+          ? await ds.getAdminOverallReport(
+              period: period,
+              fromDate: from,
+              toDate: to,
+            )
+          : await ds.getAdminBusinessReport(
+              businessId: businessId,
+              period: period,
+              fromDate: from,
+              toDate: to,
+            );
+
+      Map<String, dynamic>? res;
+      if (businessId != 0) {
+        res = await ds.getOrdersReportView(
+          frequency: _frequency,
+          status: _status,
+          businessId: businessId,
+          fromDate: from,
+          toDate: to,
+          page: _page,
+          size: _size,
+        );
+      }
+
+      num toNum(dynamic v) {
+        if (v is num) return v;
+        return num.tryParse(v?.toString() ?? '') ?? 0;
+      }
+
+      final revenue = summary.fold<double>(
+        0,
+        (sum, e) =>
+            sum +
+            toNum(e['revenue'] ?? e['totalRevenue'] ?? e['amount']).toDouble(),
+      );
+      final ordersCount = summary.fold<int>(
+        0,
+        (sum, e) =>
+            sum +
+            toNum(e['ordersCount'] ?? e['orderCount'] ?? e['count']).toInt(),
       );
 
-      setState(() => _report = res);
+      setState(() {
+        _summaryRows = summary;
+        _summaryRevenue = revenue;
+        _summaryOrdersCount = ordersCount;
+        _report = res;
+      });
       _animCtrl.forward();
     } catch (_) {
       _showSnack('Failed to load report');
@@ -118,17 +172,83 @@ class _OrdersReportsScreenState extends State<OrdersReportsScreen>
 
     try {
       final ds = GetIt.I<OrdersRemoteDataSource>();
-      await ds.downloadOrdersExcel(
+      final tempPath = await ds.downloadOrdersExcel(
         orderStatus: _status,
+        frequency: _frequency,
         fromDate: DateFormat('yyyy-MM-dd').format(_from),
         toDate: DateFormat('yyyy-MM-dd').format(_to),
-        restaurantId: _selectedBusinessId!,
+        businessId: _selectedBusinessId!,
         page: _page,
-        size: _size,
+        size: 1000,
       );
-      _showSnack('Excel downloaded successfully');
+
+      await OpenFilex.open(tempPath);
+
+      if (!mounted) return;
+      final save = await showModalBottomSheet<bool>(
+        context: context,
+        showDragHandle: true,
+        builder: (ctx) {
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Preview opened',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Do you want to save this Excel file to your device?',
+                    style: TextStyle(color: Colors.black54),
+                  ),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.of(ctx).pop(false),
+                          child: const Text('Not Now'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () => Navigator.of(ctx).pop(true),
+                          child: const Text('Save'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+
+      if (save == true) {
+        final savedPath = await _saveExcelToLocal(tempPath);
+        if (!mounted) return;
+        _showSnack(savedPath == null ? 'Save failed' : 'Saved to: $savedPath');
+      }
     } catch (_) {
       _showSnack('Download failed');
+    }
+  }
+
+  Future<String?> _saveExcelToLocal(String tempPath) async {
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final fileName = 'orders_${DateTime.now().millisecondsSinceEpoch}.xlsx';
+      final targetPath = '${dir.path}/$fileName';
+      await File(tempPath).copy(targetPath);
+      return targetPath;
+    } catch (_) {
+      return null;
     }
   }
 
@@ -182,6 +302,8 @@ class _OrdersReportsScreenState extends State<OrdersReportsScreen>
           _dropdownRow(),
           const SizedBox(height: 12),
           _dateRow(),
+          const SizedBox(height: 12),
+          _summaryRow(),
           const SizedBox(height: 16),
           Row(
             children: [
@@ -189,6 +311,48 @@ class _OrdersReportsScreenState extends State<OrdersReportsScreen>
               const SizedBox(width: 12),
               Expanded(child: _outlineButton()),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _summaryRow() {
+    return Row(
+      children: [
+        Expanded(
+          child: _summaryTile(
+            label: 'Revenue',
+            value: _summaryRevenue == 0
+                ? '—'
+                : '₹${_summaryRevenue.toStringAsFixed(0)}',
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _summaryTile(
+            label: 'Orders',
+            value: _summaryOrdersCount == 0
+                ? '—'
+                : _summaryOrdersCount.toString(),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _summaryTile({required String label, required String value}) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: _cardDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
           ),
         ],
       ),
@@ -224,6 +388,61 @@ class _OrdersReportsScreenState extends State<OrdersReportsScreen>
   }
 
   Widget _ordersList() {
+    if ((_selectedBusinessId ?? 0) == 0) {
+      final rows = _summaryRows;
+      if (rows.isEmpty) {
+        return const Center(child: Text('No report data found'));
+      }
+
+      String labelOf(Map<String, dynamic> r, int idx) {
+        final candidates = [
+          r['date'],
+          r['day'],
+          r['week'],
+          r['month'],
+          r['period'],
+          r['label'],
+        ];
+        for (final c in candidates) {
+          final s = c?.toString();
+          if (s != null && s.isNotEmpty) return s;
+        }
+        return '#${idx + 1}';
+      }
+
+      num toNum(dynamic v) {
+        if (v is num) return v;
+        return num.tryParse(v?.toString() ?? '') ?? 0;
+      }
+
+      return ListView.separated(
+        itemCount: rows.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 12),
+        itemBuilder: (_, i) {
+          final r = rows[i];
+          final revenue = toNum(
+            r['revenue'] ?? r['totalRevenue'] ?? r['amount'],
+          ).toDouble();
+          final count = toNum(
+            r['ordersCount'] ?? r['orderCount'] ?? r['count'],
+          ).toInt();
+          return Container(
+            decoration: _cardDecoration(),
+            child: ListTile(
+              title: Text(
+                labelOf(r, i),
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              subtitle: Text(
+                '₹${revenue.toStringAsFixed(0)} • $count orders',
+                style: const TextStyle(color: Colors.grey),
+              ),
+            ),
+          );
+        },
+      );
+    }
+
     List items = [];
     final data = _report;
     if (data is Map<String, dynamic>) {

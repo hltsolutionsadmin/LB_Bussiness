@@ -13,15 +13,15 @@ class AddDeliveryPartnerScreen extends StatefulWidget {
 class _AddDeliveryPartnerScreenState extends State<AddDeliveryPartnerScreen> {
   final _formKey = GlobalKey<FormState>();
   final _vehicleController = TextEditingController();
+  final _mobileController = TextEditingController();
 
-  final String _status = 'AVAILABLE';
-  bool _active = true;
   bool _available = true;
   bool _submitting = false;
 
   @override
   void dispose() {
     _vehicleController.dispose();
+    _mobileController.dispose();
     super.dispose();
   }
 
@@ -33,9 +33,8 @@ class _AddDeliveryPartnerScreenState extends State<AddDeliveryPartnerScreen> {
       final ds = GetIt.I<DeliveryRemoteDataSource>();
       final res = await ds.addPartner(
         vehicleNumber: _vehicleController.text.trim(),
-        status: _status,
-        active: _active,
         available: _available,
+        mobileNumber: _mobileController.text.trim(),
       );
       if (!mounted) return;
       Navigator.of(context).pop(res);
@@ -87,7 +86,6 @@ class _AddDeliveryPartnerScreenState extends State<AddDeliveryPartnerScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      /// 🚗 Vehicle Number
                       Text(
                         'Vehicle Details',
                         style: theme.textTheme.titleMedium?.copyWith(
@@ -119,18 +117,34 @@ class _AddDeliveryPartnerScreenState extends State<AddDeliveryPartnerScreen> {
                         },
                       ),
 
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 12),
 
-                      /// 🔘 Active Switch
-                      SwitchListTile.adaptive(
-                        contentPadding: EdgeInsets.zero,
-                        title: const Text('Active'),
-                        subtitle: const Text('Partner can receive orders'),
-                        value: _active,
-                        onChanged: (v) => setState(() => _active = v),
+                      TextFormField(
+                        controller: _mobileController,
+                        keyboardType: TextInputType.phone,
+                        decoration: InputDecoration(
+                          labelText: 'Mobile Number',
+                          hintText: '9295012126',
+                          prefixIcon: const Icon(Icons.phone_android),
+                          filled: true,
+                          fillColor: const Color(0xFFF4F6FA),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                        validator: (v) {
+                          final t = v?.trim() ?? '';
+                          if (t.isEmpty) return 'Mobile number is required';
+                          if (t.length < 10) {
+                            return 'Enter a valid mobile number';
+                          }
+                          return null;
+                        },
                       ),
 
-                      /// 🔘 Available Switch
+                      const SizedBox(height: 20),
+
                       SwitchListTile.adaptive(
                         contentPadding: EdgeInsets.zero,
                         title: const Text('Available'),
