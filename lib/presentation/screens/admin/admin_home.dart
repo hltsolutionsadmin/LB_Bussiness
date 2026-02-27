@@ -4,6 +4,7 @@ import 'package:local_basket_business/presentation/screens/admin/restaurants_man
 import 'package:local_basket_business/presentation/screens/admin/restaurant_onboarding.dart';
 import 'package:local_basket_business/presentation/screens/admin/delivery_management.dart';
 import 'package:local_basket_business/presentation/screens/admin/delivery_partner_reports.dart';
+import 'package:local_basket_business/presentation/screens/admin/offers_management.dart';
 import 'package:local_basket_business/presentation/screens/admin/admin_settings.dart';
 import 'package:local_basket_business/widgets/bottom_nav_bar.dart';
 import 'package:local_basket_business/presentation/screens/admin/orders_reports_screen.dart';
@@ -45,6 +46,17 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
               );
               return;
             }
+            if (route == 'offers') {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => OffersManagementScreen(
+                    onBack: () => Navigator.of(context).pop(),
+                    businessId: 0,
+                  ),
+                ),
+              );
+              return;
+            }
           },
         );
         break;
@@ -66,11 +78,22 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
       case 2:
         body = DeliveryManagementScreen(
           onNavigate: (route) {
-            if (route == 'delivery-reports') {
+            final parts = route.split(':');
+            final name = parts.isNotEmpty ? parts.first : route;
+            final partnerId = parts.length > 1 ? int.tryParse(parts[1]) : null;
+
+            if (name == 'delivery-reports') {
+              if (partnerId == null || partnerId <= 0) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Invalid delivery partner id')),
+                );
+                return;
+              }
               Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (_) => DeliveryPartnerReportsScreen(
                     onBack: () => Navigator.of(context).pop(),
+                    partnerId: partnerId,
                   ),
                 ),
               );

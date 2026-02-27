@@ -18,7 +18,6 @@ Future<void> main() async {
     await prefs.setBool(firstRunKey, true);
   }
   await setupLocator();
-  // Start global orders poller (1s interval) to show new-order popup anywhere
   sl<OrdersPoller>().start();
   runApp(const App());
 }

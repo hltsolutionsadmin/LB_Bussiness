@@ -3,10 +3,17 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:local_basket_business/widgets/glass_card.dart';
 import 'package:local_basket_business/theme/app_colors.dart';
+import 'package:get_it/get_it.dart';
+import 'package:local_basket_business/data/datasources/delivery/delivery_remote_data_source.dart';
 
 class DeliveryPartnerReportsScreen extends StatefulWidget {
   final VoidCallback onBack;
-  const DeliveryPartnerReportsScreen({super.key, required this.onBack});
+  final int partnerId;
+  const DeliveryPartnerReportsScreen({
+    super.key,
+    required this.onBack,
+    required this.partnerId,
+  });
 
   @override
   State<DeliveryPartnerReportsScreen> createState() =>
@@ -15,8 +22,125 @@ class DeliveryPartnerReportsScreen extends StatefulWidget {
 
 class _DeliveryPartnerReportsScreenState
     extends State<DeliveryPartnerReportsScreen> {
-  String _selectedPeriod = 'Week';
-  final List<String> _periods = const ['Week', 'Month', 'Year'];
+  String _selectedPeriod = 'Daily';
+  final List<String> _periods = const ['Daily', 'Weekly', 'Monthly'];
+  bool _loading = true;
+  List<FlSpot> _spots = const [];
+  int _totalDeliveries = 0;
+  double _onTimeRate = 0;
+  double _avgRating = 0;
+  double _totalEarnings = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  String _fmt(DateTime d) {
+    String two(int v) => v < 10 ? '0$v' : '$v';
+    return '${d.year}-${two(d.month)}-${two(d.day)}';
+  }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    try {
+      final now = DateTime.now();
+      final periodLc = _selectedPeriod.toLowerCase();
+      final from = periodLc == 'daily'
+          ? now.subtract(const Duration(days: 6))
+          : periodLc == 'weekly'
+          ? now.subtract(const Duration(days: 30))
+          : now.subtract(const Duration(days: 180));
+      final ds = GetIt.I<DeliveryRemoteDataSource>();
+      final raw = await ds.getDeliveryPartnerReport(
+        partnerId: widget.partnerId,
+        period: periodLc,
+        from: _fmt(from),
+        to: _fmt(now),
+      );
+
+      dynamic payload = raw;
+      if (payload is Map<String, dynamic> && payload['data'] != null) {
+        payload = payload['data'];
+      }
+
+      List<Map<String, dynamic>> rows = [];
+      if (payload is List) {
+        rows = payload
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
+      } else if (payload is Map<String, dynamic>) {
+        final maybeList =
+            payload['content'] ?? payload['rows'] ?? payload['items'];
+        if (maybeList is List) {
+          rows = maybeList
+              .whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList();
+        }
+      }
+
+      num toNum(dynamic v) {
+        if (v is num) return v;
+        return num.tryParse(v?.toString() ?? '') ?? 0;
+      }
+
+      final deliveries = rows.fold<int>(
+        0,
+        (sum, e) =>
+            sum +
+            toNum(e['deliveries'] ?? e['deliveryCount'] ?? e['count']).toInt(),
+      );
+      final earnings = rows.fold<double>(
+        0,
+        (sum, e) =>
+            sum +
+            toNum(
+              e['earnings'] ?? e['totalEarnings'] ?? e['amount'],
+            ).toDouble(),
+      );
+
+      final spots = <FlSpot>[];
+      for (int i = 0; i < rows.length; i++) {
+        final e = rows[i];
+        final y = toNum(
+          e['deliveries'] ?? e['deliveryCount'] ?? e['count'],
+        ).toDouble();
+        spots.add(FlSpot(i.toDouble(), y));
+      }
+
+      double onTime = 0;
+      double rating = 0;
+      if (payload is Map<String, dynamic>) {
+        onTime = toNum(
+          payload['onTimeRate'] ??
+              payload['onTime'] ??
+              payload['onTimePercentage'],
+        ).toDouble();
+        rating = toNum(
+          payload['avgRating'] ?? payload['averageRating'],
+        ).toDouble();
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _spots = spots;
+        _totalDeliveries = deliveries;
+        _totalEarnings = earnings;
+        _onTimeRate = onTime;
+        _avgRating = rating;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Failed to load reports')));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -97,7 +221,10 @@ class _DeliveryPartnerReportsScreenState
             )
             .toList(),
         onChanged: (value) {
-          if (value != null) setState(() => _selectedPeriod = value);
+          if (value != null) {
+            setState(() => _selectedPeriod = value);
+            _load();
+          }
         },
       ),
     );
@@ -126,28 +253,30 @@ class _DeliveryPartnerReportsScreenState
               children: [
                 _buildMetricCard(
                   'Total Deliveries',
-                  '1,234',
+                  _totalDeliveries.toString(),
                   '+18%',
                   Icons.delivery_dining,
                   AppColors.info,
                 ),
                 _buildMetricCard(
                   'On-Time Rate',
-                  '94%',
+                  _onTimeRate == 0 ? '—' : '${_onTimeRate.toStringAsFixed(0)}%',
                   '+3%',
                   Icons.timer,
                   AppColors.success,
                 ),
                 _buildMetricCard(
                   'Avg Rating',
-                  '4.7',
+                  _avgRating == 0 ? '—' : _avgRating.toStringAsFixed(1),
                   '+0.3',
                   Icons.star,
                   AppColors.warning,
                 ),
                 _buildMetricCard(
                   'Total Earnings',
-                  '₹45K',
+                  _totalEarnings == 0
+                      ? '—'
+                      : '₹${_totalEarnings.toStringAsFixed(0)}',
                   '+12%',
                   Icons.currency_rupee,
                   AppColors.orange600,
@@ -234,102 +363,115 @@ class _DeliveryPartnerReportsScreenState
               const SizedBox(height: 20),
               SizedBox(
                 height: 200,
-                child: LineChart(
-                  LineChartData(
-                    gridData: FlGridData(
-                      show: true,
-                      drawVerticalLine: false,
-                      getDrawingHorizontalLine: (value) =>
-                          FlLine(color: AppColors.glassBorder, strokeWidth: 1),
-                    ),
-                    titlesData: FlTitlesData(
-                      show: true,
-                      rightTitles: const AxisTitles(
-                        sideTitles: SideTitles(showTitles: false),
-                      ),
-                      topTitles: const AxisTitles(
-                        sideTitles: SideTitles(showTitles: false),
-                      ),
-                      bottomTitles: AxisTitles(
-                        sideTitles: SideTitles(
-                          showTitles: true,
-                          getTitlesWidget: (value, meta) {
-                            const days = [
-                              'Mon',
-                              'Tue',
-                              'Wed',
-                              'Thu',
-                              'Fri',
-                              'Sat',
-                              'Sun',
-                            ];
-                            if (value.toInt() >= 0 &&
-                                value.toInt() < days.length) {
-                              return Padding(
-                                padding: const EdgeInsets.only(top: 8),
-                                child: Text(
-                                  days[value.toInt()],
+                child: _loading
+                    ? const Center(child: CircularProgressIndicator())
+                    : LineChart(
+                        LineChartData(
+                          gridData: FlGridData(
+                            show: true,
+                            drawVerticalLine: false,
+                            getDrawingHorizontalLine: (value) => FlLine(
+                              color: AppColors.glassBorder,
+                              strokeWidth: 1,
+                            ),
+                          ),
+                          titlesData: FlTitlesData(
+                            show: true,
+                            rightTitles: const AxisTitles(
+                              sideTitles: SideTitles(showTitles: false),
+                            ),
+                            topTitles: const AxisTitles(
+                              sideTitles: SideTitles(showTitles: false),
+                            ),
+                            bottomTitles: AxisTitles(
+                              sideTitles: SideTitles(
+                                showTitles: true,
+                                getTitlesWidget: (value, meta) {
+                                  const days = [
+                                    'Mon',
+                                    'Tue',
+                                    'Wed',
+                                    'Thu',
+                                    'Fri',
+                                    'Sat',
+                                    'Sun',
+                                  ];
+                                  if (value.toInt() >= 0 &&
+                                      value.toInt() < days.length) {
+                                    return Padding(
+                                      padding: const EdgeInsets.only(top: 8),
+                                      child: Text(
+                                        days[value.toInt()],
+                                        style: TextStyle(
+                                          color: AppColors.textMuted,
+                                          fontSize: 10,
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                  return const Text('');
+                                },
+                              ),
+                            ),
+                            leftTitles: AxisTitles(
+                              sideTitles: SideTitles(
+                                showTitles: true,
+                                reservedSize: 40,
+                                getTitlesWidget: (value, meta) => Text(
+                                  value.toInt().toString(),
                                   style: TextStyle(
                                     color: AppColors.textMuted,
                                     fontSize: 10,
                                   ),
                                 ),
-                              );
-                            }
-                            return const Text('');
-                          },
-                        ),
-                      ),
-                      leftTitles: AxisTitles(
-                        sideTitles: SideTitles(
-                          showTitles: true,
-                          reservedSize: 40,
-                          getTitlesWidget: (value, meta) => Text(
-                            value.toInt().toString(),
-                            style: TextStyle(
-                              color: AppColors.textMuted,
-                              fontSize: 10,
+                              ),
                             ),
                           ),
+                          borderData: FlBorderData(show: false),
+                          minX: 0,
+                          maxX: (_spots.isEmpty
+                              ? 6
+                              : (_spots.length - 1).toDouble()),
+                          minY: 0,
+                          maxY: _spots.isEmpty
+                              ? 250
+                              : (_spots
+                                        .map((e) => e.y)
+                                        .reduce((a, b) => a > b ? a : b) +
+                                    10),
+                          lineBarsData: [
+                            LineChartBarData(
+                              spots: _spots.isEmpty
+                                  ? const [
+                                      FlSpot(0, 0),
+                                      FlSpot(1, 0),
+                                      FlSpot(2, 0),
+                                      FlSpot(3, 0),
+                                      FlSpot(4, 0),
+                                      FlSpot(5, 0),
+                                      FlSpot(6, 0),
+                                    ]
+                                  : _spots,
+                              isCurved: true,
+                              gradient: AppColors.buttonGradient,
+                              barWidth: 3,
+                              isStrokeCapRound: true,
+                              dotData: const FlDotData(show: true),
+                              belowBarData: BarAreaData(
+                                show: true,
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    AppColors.orange600.withOpacity(0.3),
+                                    AppColors.orange600.withOpacity(0.0),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    ),
-                    borderData: FlBorderData(show: false),
-                    minX: 0,
-                    maxX: 6,
-                    minY: 0,
-                    maxY: 250,
-                    lineBarsData: [
-                      LineChartBarData(
-                        spots: const [
-                          FlSpot(0, 150),
-                          FlSpot(1, 175),
-                          FlSpot(2, 160),
-                          FlSpot(3, 190),
-                          FlSpot(4, 220),
-                          FlSpot(5, 210),
-                          FlSpot(6, 185),
-                        ],
-                        isCurved: true,
-                        gradient: AppColors.buttonGradient,
-                        barWidth: 3,
-                        isStrokeCapRound: true,
-                        dotData: const FlDotData(show: true),
-                        belowBarData: BarAreaData(
-                          show: true,
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              AppColors.orange600.withOpacity(0.3),
-                              AppColors.orange600.withOpacity(0.0),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
               ),
             ],
           ),

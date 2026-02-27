@@ -1,11 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:local_basket_business/theme/app_colors.dart';
 import 'package:dio/dio.dart';
 import 'package:local_basket_business/core/network/dio_client.dart';
+import 'package:local_basket_business/core/env/env.dart';
 import 'package:local_basket_business/core/storage/secure_storage.dart';
 import 'package:local_basket_business/data/datasources/business/business_remote_data_source.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:local_basket_business/presentation/widgets/map_picker.dart';
 
 class RestaurantOnboardingScreen extends StatefulWidget {
@@ -21,61 +25,183 @@ class _RestaurantOnboardingScreenState
     extends State<RestaurantOnboardingScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
-  final _ownerController = TextEditingController();
-  final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
   final _addressController = TextEditingController();
-  final _gstController = TextEditingController();
-  final _fssaiController = TextEditingController();
   final _cityController = TextEditingController();
+  final _stateController = TextEditingController();
   final _countryController = TextEditingController(text: 'india');
   final _postalController = TextEditingController();
   final _latitudeController = TextEditingController();
   final _longitudeController = TextEditingController();
-  final _categoryIdController = TextEditingController(text: '1');
-  final _loginTimeController = TextEditingController();
-  final _logoutTimeController = TextEditingController();
 
   late final BusinessRemoteDataSource _remote;
 
-  String _selectedCuisine = 'North Indian';
-  bool _isLoading = false;
+  final Dio _placesDio = Dio();
+  Timer? _placesDebounce;
+  bool _isPlacesLoading = false;
+  List<_PlacesPrediction> _placesPredictions = const [];
 
-  final List<String> _cuisines = const [
-    'North Indian',
-    'South Indian',
-    'Chinese',
-    'Italian',
-    'Japanese',
-    'Mexican',
-    'Continental',
-    'Fast Food',
-  ];
+  bool _isReverseGeocoding = false;
+
+  bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
     _remote = BusinessRemoteDataSource(DioClient(Dio()), AppSecureStorage());
+    _addressController.addListener(_onAddressChanged);
+  }
+
+  void _fillFromPlacemark(Placemark p) {
+    final parts = <String?>[
+      p.street,
+      p.subLocality,
+      p.locality,
+      p.administrativeArea,
+      p.postalCode,
+      p.country,
+    ].whereType<String>().map((e) => e.trim()).where((e) => e.isNotEmpty);
+    final formatted = parts.join(', ');
+
+    if (formatted.isNotEmpty) {
+      _addressController.text = formatted;
+      _addressController.selection = TextSelection.fromPosition(
+        TextPosition(offset: _addressController.text.length),
+      );
+      setState(() {
+        _placesPredictions = const [];
+        _isPlacesLoading = false;
+      });
+    }
+
+    final city = (p.locality ?? '').trim();
+    final state = (p.administrativeArea ?? '').trim();
+    final country = (p.country ?? '').trim();
+    final postal = (p.postalCode ?? '').trim();
+
+    if (city.isNotEmpty) _cityController.text = city;
+    if (state.isNotEmpty) _stateController.text = state;
+    if (country.isNotEmpty) _countryController.text = country;
+    if (postal.isNotEmpty) _postalController.text = postal;
+  }
+
+  Future<void> _reverseGeocode(double lat, double lng) async {
+    setState(() => _isReverseGeocoding = true);
+    try {
+      final places = await placemarkFromCoordinates(lat, lng);
+      if (places.isEmpty) return;
+      final p = places.first;
+
+      final parts = <String?>[
+        p.street,
+        p.subLocality,
+        p.locality,
+        p.administrativeArea,
+        p.postalCode,
+        p.country,
+      ].whereType<String>().map((e) => e.trim()).where((e) => e.isNotEmpty);
+      final formatted = parts.join(', ');
+
+      final city = (p.locality ?? '').trim();
+      final state = (p.administrativeArea ?? '').trim();
+      final country = (p.country ?? '').trim();
+      final postal = (p.postalCode ?? '').trim();
+
+      if (!mounted) return;
+      if (formatted.isNotEmpty) {
+        _addressController.text = formatted;
+        _addressController.selection = TextSelection.fromPosition(
+          TextPosition(offset: _addressController.text.length),
+        );
+        setState(() {
+          _placesPredictions = const [];
+          _isPlacesLoading = false;
+        });
+      }
+      if (city.isNotEmpty) _cityController.text = city;
+      if (state.isNotEmpty) _stateController.text = state;
+      if (country.isNotEmpty) _countryController.text = country;
+      if (postal.isNotEmpty) _postalController.text = postal;
+    } catch (_) {
+      // ignore
+    } finally {
+      if (mounted) {
+        setState(() => _isReverseGeocoding = false);
+      }
+    }
   }
 
   @override
   void dispose() {
+    _placesDebounce?.cancel();
+    _addressController.removeListener(_onAddressChanged);
     _nameController.dispose();
-    _ownerController.dispose();
-    _emailController.dispose();
     _phoneController.dispose();
     _addressController.dispose();
-    _gstController.dispose();
-    _fssaiController.dispose();
     _cityController.dispose();
+    _stateController.dispose();
     _countryController.dispose();
     _postalController.dispose();
     _latitudeController.dispose();
     _longitudeController.dispose();
-    _categoryIdController.dispose();
-    _loginTimeController.dispose();
-    _logoutTimeController.dispose();
     super.dispose();
+  }
+
+  void _onAddressChanged() {
+    final input = _addressController.text.trim();
+    _placesDebounce?.cancel();
+    _placesDebounce = Timer(const Duration(milliseconds: 350), () {
+      if (!mounted) return;
+      if (input.isEmpty) {
+        setState(() {
+          _placesPredictions = const [];
+          _isPlacesLoading = false;
+        });
+        return;
+      }
+      _fetchPlaceAutocomplete(input);
+    });
+  }
+
+  Future<void> _fetchPlaceAutocomplete(String input) async {
+    final apiKey = EnvConfig.googleMapsApiKey;
+    if (apiKey.isEmpty) {
+      setState(() {
+        _placesPredictions = const [];
+        _isPlacesLoading = false;
+      });
+      return;
+    }
+
+    setState(() => _isPlacesLoading = true);
+    try {
+      final res = await _placesDio.get(
+        'https://maps.googleapis.com/maps/api/place/autocomplete/json',
+        queryParameters: {'input': input, 'key': apiKey},
+      );
+
+      final data = res.data;
+      final preds = (data is Map<String, dynamic>)
+          ? (data['predictions'] as List?)
+          : null;
+
+      final parsed = (preds ?? const [])
+          .whereType<Map>()
+          .map((e) => _PlacesPrediction.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+
+      if (!mounted) return;
+      setState(() {
+        _placesPredictions = parsed;
+        _isPlacesLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _placesPredictions = const [];
+        _isPlacesLoading = false;
+      });
+    }
   }
 
   Future<void> _submitForm() async {
@@ -84,26 +210,14 @@ class _RestaurantOnboardingScreenState
     try {
       await _remote.onboardBusiness(
         businessName: _nameController.text.trim(),
-        categoryId: _categoryIdController.text.trim(),
         addressLine1: _addressController.text.trim(),
         city: _cityController.text.trim(),
+        state: _stateController.text.trim(),
         country: _countryController.text.trim(),
         postalCode: _postalController.text.trim(),
+        contactNumber: _phoneController.text.trim(),
         latitude: _latitudeController.text.trim(),
         longitude: _longitudeController.text.trim(),
-        contactNumber: _phoneController.text.trim(),
-        gstNumber: _gstController.text.trim().isEmpty
-            ? null
-            : _gstController.text.trim(),
-        fssaiNumber: _fssaiController.text.trim().isEmpty
-            ? null
-            : _fssaiController.text.trim(),
-        loginTime: _loginTimeController.text.trim().isEmpty
-            ? null
-            : _loginTimeController.text.trim(),
-        logoutTime: _logoutTimeController.text.trim().isEmpty
-            ? null
-            : _logoutTimeController.text.trim(),
       );
     } catch (e) {
       if (!mounted) return;
@@ -189,31 +303,6 @@ class _RestaurantOnboardingScreenState
                             ),
                             const SizedBox(height: 16),
                             _buildTextField(
-                              controller: _ownerController,
-                              label: 'Owner Name',
-                              icon: Icons.person,
-                              validator: (v) => v == null || v.isEmpty
-                                  ? 'Please enter owner name'
-                                  : null,
-                            ),
-                            const SizedBox(height: 16),
-                            _buildTextField(
-                              controller: _emailController,
-                              label: 'Email',
-                              icon: Icons.email,
-                              keyboardType: TextInputType.emailAddress,
-                              validator: (v) {
-                                if (v == null || v.isEmpty) {
-                                  return 'Please enter email';
-                                }
-                                if (!v.contains('@')) {
-                                  return 'Please enter a valid email';
-                                }
-                                return null;
-                              },
-                            ),
-                            const SizedBox(height: 16),
-                            _buildTextField(
                               controller: _phoneController,
                               label: 'Phone Number',
                               icon: Icons.phone,
@@ -232,6 +321,68 @@ class _RestaurantOnboardingScreenState
                                   ? 'Please enter address'
                                   : null,
                             ),
+                            if (_isPlacesLoading)
+                              const Padding(
+                                padding: EdgeInsets.only(top: 8),
+                                child: LinearProgressIndicator(minHeight: 2),
+                              ),
+                            if (_isReverseGeocoding)
+                              const Padding(
+                                padding: EdgeInsets.only(top: 8),
+                                child: LinearProgressIndicator(minHeight: 2),
+                              ),
+                            if (_placesPredictions.isNotEmpty)
+                              Container(
+                                margin: const EdgeInsets.only(top: 8),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: AppColors.glassBorder,
+                                  ),
+                                ),
+                                child: ListView.separated(
+                                  shrinkWrap: true,
+                                  physics: const NeverScrollableScrollPhysics(),
+                                  itemCount: _placesPredictions.length,
+                                  separatorBuilder: (_, __) => Divider(
+                                    height: 1,
+                                    color: AppColors.glassBorder,
+                                  ),
+                                  itemBuilder: (context, index) {
+                                    final p = _placesPredictions[index];
+                                    return ListTile(
+                                      dense: true,
+                                      leading: const Icon(
+                                        Icons.place,
+                                        color: AppColors.orange600,
+                                      ),
+                                      title: Text(
+                                        p.description,
+                                        style: const TextStyle(
+                                          color: AppColors.textPrimary,
+                                        ),
+                                      ),
+                                      onTap: () {
+                                        _addressController.text = p.description;
+                                        _addressController.selection =
+                                            TextSelection.fromPosition(
+                                              TextPosition(
+                                                offset: _addressController
+                                                    .text
+                                                    .length,
+                                              ),
+                                            );
+                                        setState(() {
+                                          _placesPredictions = const [];
+                                          _isPlacesLoading = false;
+                                        });
+                                        FocusScope.of(context).unfocus();
+                                      },
+                                    );
+                                  },
+                                ),
+                              ),
                             const SizedBox(height: 16),
                             _buildTextField(
                               controller: _cityController,
@@ -239,6 +390,15 @@ class _RestaurantOnboardingScreenState
                               icon: Icons.location_city,
                               validator: (v) => v == null || v.isEmpty
                                   ? 'Please enter city'
+                                  : null,
+                            ),
+                            const SizedBox(height: 16),
+                            _buildTextField(
+                              controller: _stateController,
+                              label: 'State',
+                              icon: Icons.map_outlined,
+                              validator: (v) => v == null || v.isEmpty
+                                  ? 'Please enter state'
                                   : null,
                             ),
                             const SizedBox(height: 16),
@@ -258,16 +418,6 @@ class _RestaurantOnboardingScreenState
                               keyboardType: TextInputType.number,
                               validator: (v) => v == null || v.isEmpty
                                   ? 'Please enter postal code'
-                                  : null,
-                            ),
-                            const SizedBox(height: 16),
-                            _buildTextField(
-                              controller: _categoryIdController,
-                              label: 'Category ID',
-                              icon: Icons.category,
-                              keyboardType: TextInputType.number,
-                              validator: (v) => v == null || v.isEmpty
-                                  ? 'Please enter category id'
                                   : null,
                             ),
                             const SizedBox(height: 16),
@@ -310,7 +460,7 @@ class _RestaurantOnboardingScreenState
                               child: TextButton.icon(
                                 onPressed: () async {
                                   final result = await Navigator.of(context)
-                                      .push<LatLng?>(
+                                      .push(
                                         MaterialPageRoute(
                                           builder: (_) {
                                             final lat = double.tryParse(
@@ -330,13 +480,28 @@ class _RestaurantOnboardingScreenState
                                           },
                                         ),
                                       );
-                                  if (result != null) {
-                                    _latitudeController.text = result.latitude
-                                        .toStringAsFixed(6);
-                                    _longitudeController.text = result.longitude
-                                        .toStringAsFixed(6);
-                                    setState(() {});
+                                  final MapPickerResult? picked =
+                                      result is MapPickerResult ? result : null;
+                                  if (picked == null) return;
+
+                                  _latitudeController.text = picked
+                                      .location
+                                      .latitude
+                                      .toStringAsFixed(6);
+                                  _longitudeController.text = picked
+                                      .location
+                                      .longitude
+                                      .toStringAsFixed(6);
+
+                                  _fillFromPlacemark(picked.placemark);
+                                  if (_addressController.text.trim().isEmpty) {
+                                    await _reverseGeocode(
+                                      picked.location.latitude,
+                                      picked.location.longitude,
+                                    );
                                   }
+
+                                  setState(() {});
                                 },
                                 icon: const Icon(
                                   Icons.map,
@@ -344,40 +509,6 @@ class _RestaurantOnboardingScreenState
                                 ),
                                 label: const Text('Pick from Map'),
                               ),
-                            ),
-                            const SizedBox(height: 16),
-                            _buildDropdown(),
-                            const SizedBox(height: 16),
-                            _buildTextField(
-                              controller: _gstController,
-                              label: 'GST Number (Optional)',
-                              icon: Icons.receipt,
-                            ),
-                            const SizedBox(height: 16),
-                            _buildTextField(
-                              controller: _fssaiController,
-                              label: 'FSSAI Number (Optional)',
-                              icon: Icons.shield,
-                            ),
-                            const SizedBox(height: 16),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: _buildTextField(
-                                    controller: _loginTimeController,
-                                    label: 'Login Time (HH:mm)',
-                                    icon: Icons.login,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: _buildTextField(
-                                    controller: _logoutTimeController,
-                                    label: 'Logout Time (HH:mm)',
-                                    icon: Icons.logout,
-                                  ),
-                                ),
-                              ],
                             ),
                           ],
                         ),
@@ -425,30 +556,18 @@ class _RestaurantOnboardingScreenState
       style: const TextStyle(color: AppColors.textPrimary),
     );
   }
+}
 
-  Widget _buildDropdown() {
-    return DropdownButtonFormField<String>(
-      initialValue: _selectedCuisine,
-      decoration: const InputDecoration(
-        labelText: 'Cuisine Type',
-        prefixIcon: Icon(Icons.fastfood, color: AppColors.orange600),
-      ),
-      dropdownColor: AppColors.red900,
-      items: _cuisines
-          .map(
-            (cuisine) => DropdownMenuItem(
-              value: cuisine,
-              child: Text(
-                cuisine,
-                style: const TextStyle(color: AppColors.textPrimary),
-              ),
-            ),
-          )
-          .toList(),
-      onChanged: (value) {
-        if (value != null) setState(() => _selectedCuisine = value);
-      },
-      style: const TextStyle(color: AppColors.textPrimary),
+class _PlacesPrediction {
+  const _PlacesPrediction({required this.description, required this.placeId});
+
+  final String description;
+  final String placeId;
+
+  factory _PlacesPrediction.fromJson(Map<String, dynamic> json) {
+    return _PlacesPrediction(
+      description: (json['description'] ?? '').toString(),
+      placeId: (json['place_id'] ?? '').toString(),
     );
   }
 }
