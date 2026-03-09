@@ -19,6 +19,30 @@ class BusinessRemoteDataSource {
     );
   }
 
+  int? _parseId(dynamic v) {
+    if (v is num) return v.toInt();
+    return int.tryParse(v?.toString() ?? '');
+  }
+
+  int? _extractBusinessId(dynamic data) {
+    if (data is Map) {
+      final map = Map<String, dynamic>.from(data);
+      final direct = _parseId(
+        map['id'] ?? map['businessId'] ?? map['restaurantId'],
+      );
+      if (direct != null) return direct;
+
+      final inner = map['data'];
+      if (inner is Map) {
+        final innerMap = Map<String, dynamic>.from(inner);
+        return _parseId(
+          innerMap['id'] ?? innerMap['businessId'] ?? innerMap['restaurantId'],
+        );
+      }
+    }
+    return null;
+  }
+
   Future<void> blockBusiness({required int businessId}) async {
     final token = await _storage.readToken();
     if (kDebugMode) {
@@ -62,7 +86,7 @@ class BusinessRemoteDataSource {
     );
   }
 
-  Future<void> onboardBusiness({
+  Future<int?> onboardBusiness({
     required String businessName,
     required String addressLine1,
     required String city,
@@ -91,7 +115,7 @@ class BusinessRemoteDataSource {
       ..add(MapEntry('longitude', longitude))
       ..add(MapEntry('contactNumber', contactNumber));
 
-    await _client.dio.post(
+    final res = await _client.dio.post(
       '/usermgmt/business/onboard',
       data: form,
       options: Options(
@@ -101,6 +125,21 @@ class BusinessRemoteDataSource {
           'Content-Type': 'multipart/form-data',
         },
       ),
+    );
+
+    return _extractBusinessId(res.data);
+  }
+
+  Future<void> approveBusiness({required int businessId}) async {
+    final token = await _storage.readToken();
+    if (kDebugMode) {
+      debugPrint(
+        '[API] Approve Business -> PUT /usermgmt/business/approve/$businessId',
+      );
+    }
+    await _client.dio.put(
+      '/usermgmt/business/approve/$businessId',
+      options: _authOptions(token),
     );
   }
 

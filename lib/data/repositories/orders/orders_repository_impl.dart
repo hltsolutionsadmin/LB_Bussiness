@@ -20,6 +20,11 @@ class OrdersRepositoryImpl implements OrdersRepository {
   }
 
   @override
+  Future<Map<String, dynamic>> getBusinessKpi({required int businessId}) {
+    return _remote.getBusinessKpi(businessId: businessId);
+  }
+
+  @override
   Future<void> updateOrderStatus({
     required String orderNumber,
     required String status,

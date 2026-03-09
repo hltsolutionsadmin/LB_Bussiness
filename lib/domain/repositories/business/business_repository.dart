@@ -4,7 +4,9 @@ abstract class BusinessRepository {
     required bool enabled,
   });
 
-  Future<void> onboardBusiness({
+  Future<void> approveBusiness({required int businessId});
+
+  Future<int?> onboardBusiness({
     required String businessName,
     required String addressLine1,
     required String city,
