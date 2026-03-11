@@ -21,19 +21,46 @@ class _OrdersTabState extends State<OrdersTab> {
   final List<Map<String, dynamic>> _orders = [];
   final ScrollController _scrollController = ScrollController();
   bool _loading = false;
+  bool _silentRefreshing = false;
   bool _hasNext = true;
   int _page = 0;
   final int _size = 10;
 
   Timer? _refreshTimer;
+  Timer? _initialWaitTimer;
+  int _initialWaitTicks = 0;
   Set<String> _previousOrderIds = <String>{};
   bool _isInitialLoad = true;
+  int? _lastBusinessId;
+  final Set<String> _updatingOrderIds = <String>{};
 
   @override
   void initState() {
     super.initState();
-    _loadPage();
-    _startAutoRefresh();
+    sl<SessionStore>().addListener(_onSessionChanged);
+    _onSessionChanged();
+
+    // In some cases the tab is built before userDetails finishes and
+    // businessId isn't available yet. Wait briefly and auto-trigger load.
+    _initialWaitTimer ??= Timer.periodic(const Duration(milliseconds: 500), (
+      t,
+    ) {
+      _initialWaitTicks += 1;
+      final bid = _getBusinessId();
+      if (bid != null) {
+        t.cancel();
+        _initialWaitTimer = null;
+        _initialWaitTicks = 0;
+        _onSessionChanged();
+        return;
+      }
+      // stop after ~10 seconds
+      if (_initialWaitTicks >= 20) {
+        t.cancel();
+        _initialWaitTimer = null;
+      }
+    });
+
     _scrollController.addListener(() {
       if (_scrollController.position.pixels >=
               _scrollController.position.maxScrollExtent - 200 &&
@@ -47,21 +74,53 @@ class _OrdersTabState extends State<OrdersTab> {
   @override
   void dispose() {
     _refreshTimer?.cancel();
+    _initialWaitTimer?.cancel();
+    sl<SessionStore>().removeListener(_onSessionChanged);
     _scrollController.dispose();
     super.dispose();
   }
 
+  void _onSessionChanged() {
+    final businessId = _getBusinessId();
+    if (businessId == null) return;
+
+    // Start auto refresh only after businessId is available.
+    if (_refreshTimer == null) {
+      _startAutoRefresh();
+    }
+
+    // If businessId became available (or changed), force a refresh.
+    if (_lastBusinessId != businessId) {
+      _lastBusinessId = businessId;
+      _loadPage(refresh: true);
+      return;
+    }
+
+    // If we previously couldn't load (empty list), try once.
+    if (_orders.isEmpty && !_loading) {
+      _loadPage(refresh: true);
+    }
+  }
+
   void _startAutoRefresh() {
-    _refreshTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+    _refreshTimer = Timer.periodic(const Duration(seconds: 15), (timer) {
       _silentRefresh();
     });
   }
 
   Future<void> _silentRefresh() async {
-    if (_loading) return;
+    if (_loading || _silentRefreshing) return;
 
     final businessId = _getBusinessId();
     if (businessId == null) return;
+
+    // Don't disrupt the user while they're scrolling through older pages.
+    if (_scrollController.hasClients &&
+        _scrollController.position.pixels > 40) {
+      return;
+    }
+
+    _silentRefreshing = true;
 
     try {
       final repo = sl<OrdersRepository>();
@@ -83,15 +142,30 @@ class _OrdersTabState extends State<OrdersTab> {
       // Update the orders list silently
       if (mounted) {
         setState(() {
-          _orders.clear();
-          _orders.addAll(pageData.items);
+          // Replace the first page without clearing everything
+          final incoming = pageData.items;
+          if (_orders.isEmpty) {
+            _orders.addAll(incoming);
+          } else {
+            final replaceCount = incoming.length < _orders.length
+                ? incoming.length
+                : _orders.length;
+            for (int i = 0; i < replaceCount; i++) {
+              _orders[i] = incoming[i];
+            }
+            if (incoming.length > _orders.length) {
+              _orders.addAll(incoming.sublist(_orders.length));
+            }
+          }
           _hasNext = pageData.hasNext;
-          _page = 1; // Reset to next page
+          _page = 1; // Next page after refresh
         });
       }
     } catch (e) {
       // Silent failure - don't show error to user during background refresh
       debugPrint('Silent refresh failed: $e');
+    } finally {
+      _silentRefreshing = false;
     }
   }
 
@@ -100,9 +174,12 @@ class _OrdersTabState extends State<OrdersTab> {
   // Helper methods
   int? _getBusinessId() {
     final user = sl<SessionStore>().user;
-    return (user != null && user['b2bUnit'] is Map<String, dynamic>)
-        ? (user['b2bUnit']['id'] as int?)
-        : null;
+    if (user == null || user['b2bUnit'] is! Map) return null;
+    final unit = Map<String, dynamic>.from(user['b2bUnit'] as Map);
+    final dynamic v = unit['id'];
+    if (v is num) return v.toInt();
+    final parsed = int.tryParse(v?.toString() ?? '');
+    return parsed;
   }
 
   void _showSnackBar(String message) {
@@ -126,12 +203,7 @@ class _OrdersTabState extends State<OrdersTab> {
     if (_loading) return;
 
     final businessId = _getBusinessId();
-    if (businessId == null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _showSnackBar('Business ID not found');
-      });
-      return;
-    }
+    if (businessId == null) return;
 
     setState(() => _loading = true);
 
@@ -172,6 +244,16 @@ class _OrdersTabState extends State<OrdersTab> {
           _showSnackBar('Failed to load orders: $e');
         });
       }
+
+      // If initial load fails while the session is still settling, retry once.
+      if (_orders.isEmpty && mounted) {
+        Future.delayed(const Duration(seconds: 2), () {
+          if (!mounted) return;
+          if (!_loading) {
+            _loadPage(refresh: true);
+          }
+        });
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -189,6 +271,11 @@ class _OrdersTabState extends State<OrdersTab> {
       return;
     }
 
+    final id = order['id']?.toString();
+    if (id != null && mounted) {
+      setState(() => _updatingOrderIds.add(id));
+    }
+
     try {
       await repo.updateOrderStatus(
         orderNumber: orderNumber,
@@ -203,6 +290,10 @@ class _OrdersTabState extends State<OrdersTab> {
       _showSnackBar('Updated to ${_label(newStatus)}');
     } catch (e) {
       _showSnackBar('Failed to update: $e');
+    } finally {
+      if (id != null && mounted) {
+        setState(() => _updatingOrderIds.remove(id));
+      }
     }
   }
 
@@ -345,6 +436,9 @@ class _OrdersTabState extends State<OrdersTab> {
                   return OrderCard(
                     order: order,
                     isExpanded: isExpanded,
+                    isUpdating: _updatingOrderIds.contains(
+                      order['id']?.toString() ?? '',
+                    ),
                     onTap: () {
                       setState(() {
                         _expandedOrderId = isExpanded

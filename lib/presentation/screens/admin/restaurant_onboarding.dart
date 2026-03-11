@@ -4,10 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:local_basket_business/theme/app_colors.dart';
 import 'package:dio/dio.dart';
-import 'package:local_basket_business/core/network/dio_client.dart';
 import 'package:local_basket_business/core/env/env.dart';
-import 'package:local_basket_business/core/storage/secure_storage.dart';
-import 'package:local_basket_business/data/datasources/business/business_remote_data_source.dart';
+import 'package:local_basket_business/di/locator.dart';
+import 'package:local_basket_business/domain/repositories/business/business_repository.dart';
+import 'package:local_basket_business/core/session/session_store.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:local_basket_business/presentation/widgets/map_picker.dart';
@@ -34,7 +34,7 @@ class _RestaurantOnboardingScreenState
   final _latitudeController = TextEditingController();
   final _longitudeController = TextEditingController();
 
-  late final BusinessRemoteDataSource _remote;
+  late final BusinessRepository _repo;
 
   final Dio _placesDio = Dio();
   Timer? _placesDebounce;
@@ -48,7 +48,7 @@ class _RestaurantOnboardingScreenState
   @override
   void initState() {
     super.initState();
-    _remote = BusinessRemoteDataSource(DioClient(Dio()), AppSecureStorage());
+    _repo = sl<BusinessRepository>();
     _addressController.addListener(_onAddressChanged);
   }
 
@@ -208,7 +208,7 @@ class _RestaurantOnboardingScreenState
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
     try {
-      await _remote.onboardBusiness(
+      final businessId = await _repo.onboardBusiness(
         businessName: _nameController.text.trim(),
         addressLine1: _addressController.text.trim(),
         city: _cityController.text.trim(),
@@ -219,6 +219,12 @@ class _RestaurantOnboardingScreenState
         latitude: _latitudeController.text.trim(),
         longitude: _longitudeController.text.trim(),
       );
+
+      final roles = sl<SessionStore>().roleNames;
+      final isSuperAdmin = roles.contains('ROLE_SUPER_ADMIN');
+      if (isSuperAdmin && businessId != null && businessId > 0) {
+        await _repo.approveBusiness(businessId: businessId);
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

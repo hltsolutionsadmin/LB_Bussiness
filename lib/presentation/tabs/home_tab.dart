@@ -3,6 +3,7 @@ import 'package:local_basket_business/core/session/session_store.dart';
 import 'package:local_basket_business/core/utils/responsive.dart';
 import 'package:local_basket_business/di/locator.dart';
 import 'package:local_basket_business/domain/repositories/business/business_repository.dart';
+import 'package:local_basket_business/domain/repositories/orders/orders_repository.dart';
 
 class HomeTab extends StatefulWidget {
   const HomeTab({super.key});
@@ -17,6 +18,9 @@ class _HomeTabState extends State<HomeTab> with SingleTickerProviderStateMixin {
   late Animation<double> _anim;
   bool _enabled = true;
   int? _businessId;
+
+  bool _loadingKpi = false;
+  Map<String, dynamic>? _kpi;
 
   @override
   void initState() {
@@ -41,10 +45,53 @@ class _HomeTabState extends State<HomeTab> with SingleTickerProviderStateMixin {
     if (sess is Map<String, dynamic>) {
       final b2b = sess['b2bUnit'];
       if (b2b is Map<String, dynamic>) {
-        _businessId = b2b['id'] as int?;
+        final dynamic id = b2b['id'];
+        if (id is num) _businessId = id.toInt();
+        if (id is String) _businessId = int.tryParse(id);
         final en = b2b['enabled'];
         if (en is bool) _enabled = en;
       }
+    }
+
+    _loadKpi();
+  }
+
+  double _toDouble(dynamic v) {
+    if (v is num) return v.toDouble();
+    return double.tryParse(v?.toString() ?? '') ?? 0.0;
+  }
+
+  int _toInt(dynamic v) {
+    if (v is num) return v.toInt();
+    return int.tryParse(v?.toString() ?? '') ?? 0;
+  }
+
+  String _formatCurrency(double v) {
+    final s = v.toStringAsFixed(0);
+    final chars = s.split('');
+    final buf = StringBuffer();
+    for (int i = 0; i < chars.length; i++) {
+      final idxFromEnd = chars.length - i;
+      buf.write(chars[i]);
+      if (idxFromEnd > 1 && idxFromEnd % 3 == 1) {
+        buf.write(',');
+      }
+    }
+    return '₹${buf.toString()}';
+  }
+
+  Future<void> _loadKpi() async {
+    if (_businessId == null) return;
+    setState(() => _loadingKpi = true);
+    try {
+      final repo = sl<OrdersRepository>();
+      final data = await repo.getBusinessKpi(businessId: _businessId!);
+      if (!mounted) return;
+      setState(() => _kpi = data);
+    } catch (_) {
+      // keep previous values
+    } finally {
+      if (mounted) setState(() => _loadingKpi = false);
     }
   }
 
@@ -286,14 +333,31 @@ class _HomeTabState extends State<HomeTab> with SingleTickerProviderStateMixin {
   }
 
   Widget _statsSection() {
+    final k = _kpi ?? const <String, dynamic>{};
+    final revenue = _toDouble(
+      k['todayRevenue'] ??
+          k['revenueToday'] ??
+          k['revenue'] ??
+          k['totalRevenue'],
+    );
+    final activeOrders = _toInt(
+      k['activeOrders'] ?? k['ordersActive'] ?? k['activeOrderCount'],
+    );
+    final avgPrepMin = _toInt(
+      k['avgPrepTime'] ?? k['avgPrepTimeMin'] ?? k['averagePrepTime'],
+    );
+    final rating = _toDouble(
+      k['rating'] ?? k['avgRating'] ?? k['averageRating'],
+    );
+
     return Column(
       children: [
         Row(
-          children: const [
+          children: [
             Expanded(
               child: _StatCard(
                 label: "Today's Revenue",
-                value: '₹12,450',
+                value: _loadingKpi ? '—' : _formatCurrency(revenue),
                 change: '+12%',
                 icon: Icons.currency_rupee,
                 color: Colors.green,
@@ -303,7 +367,7 @@ class _HomeTabState extends State<HomeTab> with SingleTickerProviderStateMixin {
             Expanded(
               child: _StatCard(
                 label: 'Active Orders',
-                value: '8',
+                value: _loadingKpi ? '—' : activeOrders.toString(),
                 change: '+3',
                 icon: Icons.shopping_bag_outlined,
                 color: Colors.orange,
@@ -313,11 +377,11 @@ class _HomeTabState extends State<HomeTab> with SingleTickerProviderStateMixin {
         ),
         const SizedBox(height: 16),
         Row(
-          children: const [
+          children: [
             Expanded(
               child: _StatCard(
                 label: 'Avg. Prep Time',
-                value: '18 min',
+                value: _loadingKpi ? '—' : '$avgPrepMin min',
                 change: '-2 min',
                 icon: Icons.access_time,
                 color: Colors.blue,
@@ -327,7 +391,7 @@ class _HomeTabState extends State<HomeTab> with SingleTickerProviderStateMixin {
             Expanded(
               child: _StatCard(
                 label: 'Rating',
-                value: '4.5',
+                value: _loadingKpi ? '—' : rating.toStringAsFixed(1),
                 change: '+0.2',
                 icon: Icons.star,
                 color: Colors.amber,

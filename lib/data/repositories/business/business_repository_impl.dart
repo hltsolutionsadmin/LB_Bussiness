@@ -14,7 +14,7 @@ class BusinessRepositoryImpl implements BusinessRepository {
   }
 
   @override
-  Future<void> onboardBusiness({
+  Future<int?> onboardBusiness({
     required String businessName,
     required String addressLine1,
     required String city,
@@ -36,5 +36,10 @@ class BusinessRepositoryImpl implements BusinessRepository {
       longitude: longitude,
       contactNumber: contactNumber,
     );
+  }
+
+  @override
+  Future<void> approveBusiness({required int businessId}) {
+    return _remote.approveBusiness(businessId: businessId);
   }
 }

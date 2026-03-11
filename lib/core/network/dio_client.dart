@@ -9,6 +9,7 @@ class DioClient {
     final String rawBaseUrl = (EnvConfig.baseUrl.isNotEmpty)
         ? EnvConfig.baseUrl
         : 'https://api-service.happybush-7c5a2823.centralindia.azurecontainerapps.io/api';
+    // : 'http://localhost:9443/api';
     final String normalizedBaseUrl = _normalizeApiBaseUrl(rawBaseUrl);
     _dio
       ..options = BaseOptions(

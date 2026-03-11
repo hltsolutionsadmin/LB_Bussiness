@@ -22,6 +22,12 @@ class OrdersRemoteDataSource {
     );
   }
 
+  Map<String, dynamic> _extractMap(dynamic data) {
+    if (data is Map<String, dynamic>) return data;
+    if (data is Map) return Map<String, dynamic>.from(data);
+    return <String, dynamic>{};
+  }
+
   List<Map<String, dynamic>> _extractList(dynamic data) {
     List list;
     if (data is Map<String, dynamic>) {
@@ -218,6 +224,25 @@ class OrdersRemoteDataSource {
         : (number + 1) < totalPages;
 
     return OrdersPage(items: items, hasNext: hasNext, page: number, size: size);
+  }
+
+  Future<Map<String, dynamic>> getBusinessKpi({required int businessId}) async {
+    final token = await _storage.readToken();
+    if (kDebugMode) {
+      debugPrint(
+        '[API] Business KPI -> GET /order/api/orders/business/$businessId/kpi',
+      );
+    }
+    final res = await _client.dio.get(
+      '/order/api/orders/business/$businessId/kpi',
+      options: _authOptions(token),
+    );
+    final body = res.data;
+    final map = _extractMap(body);
+    if (map['data'] is Map) {
+      return Map<String, dynamic>.from(map['data'] as Map);
+    }
+    return map;
   }
 
   Future<void> updateOrderStatus({
