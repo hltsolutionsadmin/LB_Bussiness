@@ -4,6 +4,7 @@ import 'order_action_buttons.dart';
 class OrderCard extends StatelessWidget {
   final Map<String, dynamic> order;
   final bool isExpanded;
+  final bool isUpdating;
   final VoidCallback onTap;
   final Function(Map<String, dynamic>) onShowDetails;
   final Function(Map<String, dynamic>, String) onUpdateStatus;
@@ -12,6 +13,7 @@ class OrderCard extends StatelessWidget {
     super.key,
     required this.order,
     required this.isExpanded,
+    required this.isUpdating,
     required this.onTap,
     required this.onShowDetails,
     required this.onUpdateStatus,
@@ -50,11 +52,6 @@ class OrderCard extends StatelessWidget {
       default:
         return Colors.grey;
     }
-  }
-
-  bool _isLoadingStage(String status) {
-    final st = _stage(status);
-    return st == 'new' || st == 'preparing';
   }
 
   @override
@@ -146,7 +143,6 @@ class OrderCard extends StatelessWidget {
 
   Widget _buildStatusBadge(String status) {
     final color = _getStatusColor(status);
-    final isLoading = _isLoadingStage(status);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
@@ -160,7 +156,7 @@ class OrderCard extends StatelessWidget {
           SizedBox(
             width: 14,
             height: 14,
-            child: isLoading
+            child: isUpdating
                 ? CircularProgressIndicator(
                     strokeWidth: 2,
                     valueColor: AlwaysStoppedAnimation<Color>(color),

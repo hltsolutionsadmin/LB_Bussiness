@@ -14,7 +14,8 @@ class OrderActionButtons extends StatelessWidget {
     final s = status.toLowerCase();
     if (s.contains('ready')) return 'ready';
     if (s.contains('prepar')) return 'preparing';
-    if (s.contains('new') || s.contains('place') || s.contains('accept')) {
+    if (s.contains('accept')) return 'preparing';
+    if (s.contains('new') || s.contains('place')) {
       return 'new';
     }
     return s;
@@ -38,52 +39,12 @@ class OrderActionButtons extends StatelessWidget {
   }
 
   Widget _buildNewOrderButtons() {
-    final s = (order['orderStatus']?.toString() ?? '').toLowerCase();
-    final isAccepted = s.contains('accept');
-
-    if (isAccepted) {
-      // After accepted, show Start Preparing and Reject
-      return Row(
-        children: [
-          Expanded(
-            child: ElevatedButton(
-              onPressed: () => onUpdateStatus(order, 'PREPARING'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.orange,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: const Text('Start Preparing'),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: ElevatedButton(
-              onPressed: () => onUpdateStatus(order, 'REJECTED'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: const Text('Reject'),
-            ),
-          ),
-        ],
-      );
-    }
-
-    // Initial: Accept or Reject
+    // Initial: Accept or Reject (Accept moves directly to PREPARING)
     return Row(
       children: [
         Expanded(
           child: ElevatedButton(
-            onPressed: () => onUpdateStatus(order, 'ACCEPTED'),
+            onPressed: () => onUpdateStatus(order, 'PREPARING'),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.green,
               foregroundColor: Colors.white,

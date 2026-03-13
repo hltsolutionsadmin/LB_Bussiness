@@ -22,6 +22,83 @@ class OrdersRemoteDataSource {
     );
   }
 
+  Map<String, dynamic> _extractMap(dynamic data) {
+    if (data is Map<String, dynamic>) return data;
+    if (data is Map) return Map<String, dynamic>.from(data);
+    return <String, dynamic>{};
+  }
+
+  List<Map<String, dynamic>> _extractList(dynamic data) {
+    List list;
+    if (data is Map<String, dynamic>) {
+      if (data['content'] is List) {
+        list = data['content'] as List;
+      } else if (data['data'] is List) {
+        list = data['data'] as List;
+      } else if (data['data'] is Map<String, dynamic>) {
+        final nested = data['data'] as Map<String, dynamic>;
+        if (nested['content'] is List) {
+          list = nested['content'] as List;
+        } else if (nested['data'] is List) {
+          list = nested['data'] as List;
+        } else {
+          list = [];
+        }
+      } else {
+        list = [];
+      }
+    } else if (data is List) {
+      list = data;
+    } else {
+      list = [];
+    }
+    return list
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+
+  Future<List<Map<String, dynamic>>> getAdminOverallReport({
+    required String period,
+    required String fromDate,
+    required String toDate,
+  }) async {
+    final token = await _storage.readToken();
+    final p = period.toLowerCase();
+    if (kDebugMode) {
+      debugPrint(
+        '[API] Admin Overall Report -> GET /order/report/admin/overall/$p?from=$fromDate&to=$toDate',
+      );
+    }
+    final res = await _client.dio.get(
+      '/order/report/admin/overall/$p',
+      queryParameters: {'from': fromDate, 'to': toDate},
+      options: _authOptions(token),
+    );
+    return _extractList(res.data);
+  }
+
+  Future<List<Map<String, dynamic>>> getAdminBusinessReport({
+    required int businessId,
+    required String period,
+    required String fromDate,
+    required String toDate,
+  }) async {
+    final token = await _storage.readToken();
+    final p = period.toLowerCase();
+    if (kDebugMode) {
+      debugPrint(
+        '[API] Admin Business Report -> GET /order/report/admin/business/$businessId/$p?from=$fromDate&to=$toDate',
+      );
+    }
+    final res = await _client.dio.get(
+      '/order/report/admin/business/$businessId/$p',
+      queryParameters: {'from': fromDate, 'to': toDate},
+      options: _authOptions(token),
+    );
+    return _extractList(res.data);
+  }
+
   Future<OrdersPage> getOrdersByBusiness({
     required int businessId,
     required int page,
@@ -149,6 +226,25 @@ class OrdersRemoteDataSource {
     return OrdersPage(items: items, hasNext: hasNext, page: number, size: size);
   }
 
+  Future<Map<String, dynamic>> getBusinessKpi({required int businessId}) async {
+    final token = await _storage.readToken();
+    if (kDebugMode) {
+      debugPrint(
+        '[API] Business KPI -> GET /order/api/orders/business/$businessId/kpi',
+      );
+    }
+    final res = await _client.dio.get(
+      '/order/api/orders/business/$businessId/kpi',
+      options: _authOptions(token),
+    );
+    final body = res.data;
+    final map = _extractMap(body);
+    if (map['data'] is Map) {
+      return Map<String, dynamic>.from(map['data'] as Map);
+    }
+    return map;
+  }
+
   Future<void> updateOrderStatus({
     required String orderNumber,
     required String status,
@@ -196,42 +292,19 @@ class OrdersRemoteDataSource {
         '[API] Orders Report View -> GET /order/api/orders/user/filter?frequency=$frequency&status=$status&businessId=$businessId&fromDate=$fromDate&toDate=$toDate&page=$page&size=$size',
       );
     }
-    Response res;
-    try {
-      res = await _client.dio.get(
-        '/order/api/orders/user/filter',
-        queryParameters: {
-          'frequency': frequency,
-          'status': status,
-          'businessId': businessId,
-          'fromDate': fromDate,
-          'toDate': toDate,
-          'page': page,
-          'size': size,
-        },
-        options: _authOptions(token),
-      );
-    } on DioException catch (e) {
-      if (kDebugMode) {
-        debugPrint(
-          '[API] Report View primary path failed: ${e.response?.statusCode}',
-        );
-      }
-      // Fallback to alternate gateway path
-      res = await _client.dio.get(
-        '/api/order/api/orders/user/filter',
-        queryParameters: {
-          'frequency': frequency,
-          'status': status,
-          'businessId': businessId,
-          'fromDate': fromDate,
-          'toDate': toDate,
-          'page': page,
-          'size': size,
-        },
-        options: _authOptions(token),
-      );
-    }
+    final res = await _client.dio.get(
+      '/order/api/orders/user/filter',
+      queryParameters: {
+        'frequency': frequency,
+        'status': status,
+        'businessId': businessId,
+        'fromDate': fromDate,
+        'toDate': toDate,
+        'page': page,
+        'size': size,
+      },
+      options: _authOptions(token),
+    );
     final data = res.data;
     if (data is Map<String, dynamic>) return data;
     return {'data': data};
@@ -239,67 +312,45 @@ class OrdersRemoteDataSource {
 
   Future<String> downloadOrdersExcel({
     required String orderStatus,
+    required String frequency,
     required String fromDate,
     required String toDate,
-    required int restaurantId,
+    required int businessId,
     int page = 0,
-    int size = 10,
+    int size = 1000,
   }) async {
     final token = await _storage.readToken();
     if (kDebugMode) {
       debugPrint(
-        '[API] Download Orders Excel -> GET /order/api/orders/user/filter/excel?orderStatus=$orderStatus&fromDate=$fromDate&toDate=$toDate&page=$page&size=$size&restaurantId=$restaurantId',
+        '[API] Download Orders Excel -> GET /order/api/orders/user/filter/excel?orderStatus=$orderStatus&frequency=$frequency&fromDate=$fromDate&toDate=$toDate&page=$page&size=$size&businessId=$businessId',
       );
     }
-    Response res;
-    try {
-      res = await _client.dio.get(
-        '/api/order/api/orders/user/filter/excel',
-        queryParameters: {
-          'orderStatus': orderStatus,
-          'fromDate': fromDate,
-          'toDate': toDate,
-          'page': page,
-          'size': size,
-          'restaurantId': restaurantId,
+    final res = await _client.dio.get(
+      '/order/api/orders/user/filter/excel',
+      queryParameters: {
+        // Keep legacy keys that the backend may still be using
+        'orderStatus': orderStatus,
+        'fromDate': fromDate,
+        'toDate': toDate,
+        'page': page,
+        'size': size,
+        'restaurantId': businessId,
+
+        // Send the same keys as the on-screen report endpoint
+        'frequency': frequency,
+        'status': orderStatus,
+        'businessId': businessId,
+      },
+      options: Options(
+        responseType: ResponseType.bytes,
+        headers: {
+          if (token != null && token.isNotEmpty)
+            'Authorization': 'Bearer $token',
+          'Accept':
+              'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/octet-stream',
         },
-        options: Options(
-          responseType: ResponseType.bytes,
-          headers: {
-            if (token != null && token.isNotEmpty)
-              'Authorization': 'Bearer $token',
-            'Accept':
-                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/octet-stream',
-          },
-        ),
-      );
-    } on DioException catch (e) {
-      if (kDebugMode) {
-        debugPrint(
-          '[API] Excel primary path failed: ${e.response?.statusCode}',
-        );
-      }
-      res = await _client.dio.get(
-        '/order/api/orders/user/filter/excel',
-        queryParameters: {
-          'orderStatus': orderStatus,
-          'fromDate': fromDate,
-          'toDate': toDate,
-          'page': page,
-          'size': size,
-          'restaurantId': restaurantId,
-        },
-        options: Options(
-          responseType: ResponseType.bytes,
-          headers: {
-            if (token != null && token.isNotEmpty)
-              'Authorization': 'Bearer $token',
-            'Accept':
-                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/octet-stream',
-          },
-        ),
-      );
-    }
+      ),
+    );
 
     final bytes = res.data as List<int>;
     final dir = Directory.systemTemp.createTempSync('lb_reports_');

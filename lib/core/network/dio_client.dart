@@ -6,11 +6,14 @@ import 'package:local_basket_business/routes/app_router.dart';
 
 class DioClient {
   DioClient(this._dio) {
+    final String rawBaseUrl = (EnvConfig.baseUrl.isNotEmpty)
+        ? EnvConfig.baseUrl
+        : 'https://api-service.happybush-7c5a2823.centralindia.azurecontainerapps.io/api';
+    // : 'http://localhost:9443/api';
+    final String normalizedBaseUrl = _normalizeApiBaseUrl(rawBaseUrl);
     _dio
       ..options = BaseOptions(
-        baseUrl: (EnvConfig.baseUrl.isNotEmpty)
-            ? EnvConfig.baseUrl
-            : 'https://kovela.app',
+        baseUrl: normalizedBaseUrl,
         connectTimeout: const Duration(seconds: 20),
         receiveTimeout: const Duration(seconds: 20),
         sendTimeout: const Duration(seconds: 20),
@@ -19,6 +22,7 @@ class DioClient {
         InterceptorsWrapper(
           onRequest: (options, handler) {
             if (kDebugMode) {
+              debugPrint('[DIO] baseUrl=${_dio.options.baseUrl}');
               debugPrint('[REQ] ${options.method} ${options.uri}');
               if (options.data != null) debugPrint('DATA: ${options.data}');
             }
@@ -94,6 +98,20 @@ class DioClient {
 
   final Dio _dio;
   Dio get dio => _dio;
+
+  static String _normalizeApiBaseUrl(String baseUrl) {
+    var v = baseUrl.trim();
+    while (v.endsWith('/')) {
+      v = v.substring(0, v.length - 1);
+    }
+
+    // Ensure all endpoints in the app can safely use paths like `/order/api/...`
+    // by guaranteeing the baseUrl points to the API root.
+    if (!v.toLowerCase().endsWith('/api')) {
+      v = '$v/api';
+    }
+    return v;
+  }
 
   static bool _loggingOut = false;
   Future<void> _handleLogoutOnTokenExpiry() async {

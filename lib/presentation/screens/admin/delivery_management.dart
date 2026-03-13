@@ -4,6 +4,8 @@ import 'package:local_basket_business/theme/app_colors.dart';
 import 'package:local_basket_business/widgets/glass_card.dart';
 import 'package:local_basket_business/widgets/search_bar_widget.dart';
 import 'package:local_basket_business/presentation/screens/admin/add_delivery_partner_screen.dart';
+import 'package:get_it/get_it.dart';
+import 'package:local_basket_business/data/datasources/delivery/delivery_remote_data_source.dart';
 
 class DeliveryManagementScreen extends StatefulWidget {
   final Function(String) onNavigate;
@@ -18,41 +20,77 @@ class _DeliveryManagementScreenState extends State<DeliveryManagementScreen> {
   String _searchQuery = '';
   String _selectedFilter = 'All';
 
-  final List<String> _filters = const ['All', 'Online', 'Busy', 'Offline'];
+  final List<String> _filters = const ['All', 'Active', 'Available'];
+  final List<_Partner> _all = [];
+  bool _loading = true;
 
-  // Dummy data
-  final List<_Partner> _all = [
-    _Partner(
-      name: 'Ravi Kumar',
-      vehicleType: 'Bike',
-      vehicleNumber: 'KA 05 AB 1234',
-      status: 'Online',
-      rating: 4.8,
-      totalDeliveries: 2200,
-      earnings: 86500,
-      imageUrl: '',
-    ),
-    _Partner(
-      name: 'Asha R',
-      vehicleType: 'Scooter',
-      vehicleNumber: 'KA 03 CD 5678',
-      status: 'Busy',
-      rating: 4.5,
-      totalDeliveries: 1450,
-      earnings: 54500,
-      imageUrl: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2',
-    ),
-    _Partner(
-      name: 'Imran Khan',
-      vehicleType: 'Bike',
-      vehicleNumber: 'KA 41 EF 9012',
-      status: 'Offline',
-      rating: 4.1,
-      totalDeliveries: 780,
-      earnings: 26500,
-      imageUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde',
-    ),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _loadPartners();
+  }
+
+  Future<void> _loadPartners() async {
+    setState(() => _loading = true);
+    try {
+      final ds = GetIt.I<DeliveryRemoteDataSource>();
+      List<Map<String, dynamic>> list;
+      if (_selectedFilter == 'Active') {
+        list = await ds.listActivePartnersPaged(page: 0, size: 50);
+      } else if (_selectedFilter == 'Available') {
+        list = await ds.listAvailablePartners(page: 0, size: 50);
+      } else {
+        list = await ds.listPartnersPaged(page: 0, size: 50);
+      }
+
+      String str(dynamic v) => v?.toString() ?? '';
+      bool toBool(dynamic v) {
+        if (v is bool) return v;
+        final s = str(v).toLowerCase();
+        return s == 'true' || s == '1' || s == 'yes';
+      }
+
+      int toInt(dynamic v) {
+        if (v is num) return v.toInt();
+        return int.tryParse(str(v)) ?? 0;
+      }
+
+      final mapped = list.map<_Partner>((m) {
+        final id = toInt(m['id']);
+        final name = str(m['fullName'] ?? m['name']).isNotEmpty
+            ? str(m['fullName'] ?? m['name'])
+            : (id != 0 ? 'Partner #$id' : 'Partner');
+        final vehicleNumber = str(m['vehicleNumber']);
+        final mobileNumber = str(m['mobileNumber'] ?? m['primaryContact']);
+        final available = toBool(m['available']);
+        final active = toBool(m['active'] ?? m['enabled']);
+        final status = active ? 'Active' : 'Inactive';
+        return _Partner(
+          id: id,
+          name: name,
+          vehicleNumber: vehicleNumber.isNotEmpty ? vehicleNumber : '—',
+          mobileNumber: mobileNumber.isNotEmpty ? mobileNumber : '—',
+          status: status,
+          active: active,
+          available: available,
+        );
+      }).toList();
+
+      if (!mounted) return;
+      setState(() {
+        _all
+          ..clear()
+          ..addAll(mapped);
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to load delivery partners')),
+      );
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -69,7 +107,7 @@ class _DeliveryManagementScreenState extends State<DeliveryManagementScreen> {
                 content: Text('Delivery partner added successfully'),
               ),
             );
-            setState(() {});
+            _loadPartners();
           }
         },
         icon: const Icon(Icons.add),
@@ -99,7 +137,9 @@ class _DeliveryManagementScreenState extends State<DeliveryManagementScreen> {
                         .slideY(begin: -0.2, end: 0, duration: 300.ms),
               ),
               Expanded(
-                child: partners.isEmpty
+                child: _loading
+                    ? const Center(child: CircularProgressIndicator())
+                    : partners.isEmpty
                     ? const _EmptyState(
                         icon: Icons.delivery_dining,
                         title: 'No Delivery Partners Found',
@@ -110,7 +150,10 @@ class _DeliveryManagementScreenState extends State<DeliveryManagementScreen> {
                         itemCount: partners.length,
                         itemBuilder: (context, index) => _PartnerCard(
                           data: partners[index],
-                          onTap: () => widget.onNavigate('delivery-reports'),
+                          onTap: () => widget.onNavigate(
+                            'delivery-reports:${partners[index].id}',
+                          ),
+                          onUpdated: _loadPartners,
                           index: index,
                         ),
                       ),
@@ -148,7 +191,10 @@ class _DeliveryManagementScreenState extends State<DeliveryManagementScreen> {
             child: FilterChip(
               label: Text(filter),
               selected: isSelected,
-              onSelected: (_) => setState(() => _selectedFilter = filter),
+              onSelected: (_) {
+                setState(() => _selectedFilter = filter);
+                _loadPartners();
+              },
               backgroundColor: AppColors.glass,
               selectedColor: AppColors.orange600,
               labelStyle: TextStyle(
@@ -217,10 +263,12 @@ class _EmptyState extends StatelessWidget {
 class _PartnerCard extends StatelessWidget {
   final _Partner data;
   final VoidCallback onTap;
+  final VoidCallback onUpdated;
   final int index;
   const _PartnerCard({
     required this.data,
     required this.onTap,
+    required this.onUpdated,
     required this.index,
   });
 
@@ -236,12 +284,7 @@ class _PartnerCard extends StatelessWidget {
                   CircleAvatar(
                     radius: 30,
                     backgroundColor: AppColors.orange600.withOpacity(0.2),
-                    backgroundImage: data.imageUrl.isNotEmpty
-                        ? NetworkImage(data.imageUrl)
-                        : null,
-                    child: data.imageUrl.isEmpty
-                        ? const Icon(Icons.person, color: AppColors.orange600)
-                        : null,
+                    child: const Icon(Icons.person, color: AppColors.orange600),
                   ),
                   Positioned(
                     bottom: 0,
@@ -273,7 +316,7 @@ class _PartnerCard extends StatelessWidget {
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          '${data.vehicleType} • ${data.vehicleNumber}',
+                          data.vehicleNumber,
                           style: TextStyle(
                             fontSize: 12,
                             color: AppColors.textSecondary,
@@ -285,21 +328,13 @@ class _PartnerCard extends StatelessWidget {
                     Row(
                       children: [
                         const Icon(
-                          Icons.star,
+                          Icons.phone,
                           size: 14,
-                          color: AppColors.warning,
+                          color: AppColors.textMuted,
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          data.rating.toStringAsFixed(1),
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Text(
-                          '${data.totalDeliveries} deliveries',
+                          data.mobileNumber,
                           style: TextStyle(
                             fontSize: 12,
                             color: AppColors.textSecondary,
@@ -310,23 +345,52 @@ class _PartnerCard extends StatelessWidget {
                   ],
                 ),
               ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    '₹${_formatEarnings(data.earnings)}',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.success,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Earnings',
-                    style: TextStyle(fontSize: 11, color: AppColors.textMuted),
-                  ),
-                ],
+              PopupMenuButton<String>(
+                onSelected: (value) async {
+                  if (data.id == 0) return;
+                  try {
+                    final ds = GetIt.I<DeliveryRemoteDataSource>();
+                    if (value == 'block') {
+                      await ds.blockPartner(partnerId: data.id);
+                    } else if (value == 'unblock') {
+                      await ds.unblockPartner(partnerId: data.id);
+                    }
+                    if (context.mounted) {
+                      onUpdated();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            value == 'block'
+                                ? 'Partner blocked'
+                                : 'Partner unblocked',
+                          ),
+                        ),
+                      );
+                    }
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Action failed')),
+                      );
+                    }
+                  }
+                },
+                itemBuilder: (context) {
+                  final items = <PopupMenuEntry<String>>[];
+                  if (data.active) {
+                    items.add(
+                      const PopupMenuItem(value: 'block', child: Text('Block')),
+                    );
+                  } else {
+                    items.add(
+                      const PopupMenuItem(
+                        value: 'unblock',
+                        child: Text('Unblock'),
+                      ),
+                    );
+                  }
+                  return items;
+                },
               ),
             ],
           ),
@@ -367,31 +431,20 @@ class _StatusDot extends StatelessWidget {
 }
 
 class _Partner {
+  final int id;
   final String name;
-  final String vehicleType;
   final String vehicleNumber;
   final String status;
-  final double rating;
-  final int totalDeliveries;
-  final double earnings;
-  final String imageUrl;
+  final String mobileNumber;
+  final bool active;
+  final bool available;
   _Partner({
+    required this.id,
     required this.name,
-    required this.vehicleType,
     required this.vehicleNumber,
     required this.status,
-    required this.rating,
-    required this.totalDeliveries,
-    required this.earnings,
-    required this.imageUrl,
+    required this.mobileNumber,
+    required this.active,
+    required this.available,
   });
-}
-
-String _formatEarnings(double earnings) {
-  if (earnings >= 100000) {
-    return '${(earnings / 100000).toStringAsFixed(1)}L';
-  } else if (earnings >= 1000) {
-    return '${(earnings / 1000).toStringAsFixed(1)}K';
-  }
-  return earnings.toStringAsFixed(0);
 }

@@ -7,6 +7,8 @@ abstract class OrdersRepository {
     required int size,
   });
 
+  Future<Map<String, dynamic>> getBusinessKpi({required int businessId});
+
   Future<void> updateOrderStatus({
     required String orderNumber,
     required String status,

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:local_basket_business/core/session/session_store.dart';
 import 'package:local_basket_business/domain/repositories/orders/orders_repository.dart';
@@ -18,9 +19,12 @@ class OrdersPoller {
   bool _isInitial = true;
   bool _showingDialog = false;
   bool _soundPlaying = false;
+  bool _isTickInFlight = false;
 
-  void start() {
-    _timer ??= Timer.periodic(const Duration(seconds: 1), (_) => _tick());
+  static const Duration defaultInterval = Duration(seconds: 15);
+
+  void start({Duration interval = defaultInterval}) {
+    _timer ??= Timer.periodic(interval, (_) => _tick());
   }
 
   void stop() {
@@ -29,17 +33,22 @@ class OrdersPoller {
   }
 
   Future<void> _tick() async {
+    if (_isTickInFlight) return;
+    _isTickInFlight = true;
     final user = _sessionStore.user;
     final businessId = (user != null && user['b2bUnit'] is Map<String, dynamic>)
         ? (user['b2bUnit']['id'] as int?)
         : null;
-    if (businessId == null) return;
+    if (businessId == null) {
+      _isTickInFlight = false;
+      return;
+    }
 
     try {
       final page = await _repo.getOrdersByBusiness(
         businessId: businessId,
         page: 0,
-        size: 10,
+        size: 50,
       );
 
       final currentIds = page.items.map((e) => e['id'].toString()).toSet();
@@ -71,7 +80,7 @@ class OrdersPoller {
                     await _stopSound();
                     await _repo.updateOrderStatus(
                       orderNumber: order['orderNumber']?.toString() ?? '',
-                      status: 'ACCEPTED',
+                      status: 'PREPARING',
                       notes: '0',
                     );
                     navigatorKey.currentState?.pop();
@@ -107,17 +116,25 @@ class OrdersPoller {
 
       _previousOrderIds = currentIds;
       _isInitial = false;
-    } catch (_) {
-      // ignore errors in background
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[OrdersPoller] tick error: $e');
+      }
+    } finally {
+      _isTickInFlight = false;
     }
   }
 
   Future<void> _playLoop() async {
     try {
-      await _audioPlayer.play(AssetSource('sounds/hen.mp3'));
       await _audioPlayer.setReleaseMode(ReleaseMode.loop);
+      await _audioPlayer.play(AssetSource('sounds/hen.mp3'));
       _soundPlaying = true;
-    } catch (_) {}
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[OrdersPoller] sound play failed: $e');
+      }
+    }
   }
 
   Future<void> _stopSound() async {
@@ -126,6 +143,10 @@ class OrdersPoller {
         await _audioPlayer.stop();
         _soundPlaying = false;
       }
-    } catch (_) {}
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[OrdersPoller] sound stop failed: $e');
+      }
+    }
   }
 }
