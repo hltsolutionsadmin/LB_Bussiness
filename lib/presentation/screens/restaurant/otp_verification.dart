@@ -21,6 +21,7 @@ class _OTPScreenState extends State<OTPScreen> {
     (_) => TextEditingController(),
   );
   final List<FocusNode> _focusNodes = List.generate(6, (_) => FocusNode());
+  final ScrollController _scrollController = ScrollController();
 
   String? _errorText;
   int _timer = 30;
@@ -31,6 +32,20 @@ class _OTPScreenState extends State<OTPScreen> {
   void initState() {
     super.initState();
     _startTimer();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _focusNodes.first.requestFocus();
+      _scrollToBottom();
+    });
+  }
+
+  void _scrollToBottom() {
+    if (!_scrollController.hasClients) return;
+    _scrollController.animateTo(
+      _scrollController.position.maxScrollExtent,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
+    );
   }
 
   void _startTimer() {
@@ -150,6 +165,7 @@ class _OTPScreenState extends State<OTPScreen> {
             builder: (context, constraints) {
               return SingleChildScrollView(
                 reverse: true,
+                controller: _scrollController,
                 padding: EdgeInsets.only(
                   left: 16,
                   right: 16,
@@ -269,6 +285,7 @@ class _OTPScreenState extends State<OTPScreen> {
                                                 _focusNodes[index + 1]
                                                     .requestFocus();
                                               }
+                                              _scrollToBottom();
                                               setState(() => _errorText = null);
                                             },
                                           ),
@@ -298,8 +315,9 @@ class _OTPScreenState extends State<OTPScreen> {
                                             : _handleVerify,
                                         style: ElevatedButton.styleFrom(
                                           backgroundColor: const Color(
-                                            0xFFF97316,
+                                            0xFFEF865F,
                                           ),
+
                                           shape: RoundedRectangleBorder(
                                             borderRadius: BorderRadius.circular(
                                               16,
@@ -316,6 +334,7 @@ class _OTPScreenState extends State<OTPScreen> {
                                                 style: TextStyle(
                                                   fontSize: 16,
                                                   fontWeight: FontWeight.w600,
+                                                  color: Colors.white,
                                                 ),
                                               ),
                                       ),
@@ -374,6 +393,7 @@ class _OTPScreenState extends State<OTPScreen> {
     for (final n in _focusNodes) {
       n.dispose();
     }
+    _scrollController.dispose();
     _countdownTimer?.cancel();
     super.dispose();
   }
