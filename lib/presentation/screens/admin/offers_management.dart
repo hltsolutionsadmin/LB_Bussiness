@@ -25,6 +25,8 @@ class _OffersManagementScreenState extends State<OffersManagementScreen> {
   bool _activeOnly = true;
   bool _loading = true;
   bool _loadingMore = false;
+  bool _reactivating = false;
+  bool _deleting = false;
   int _page = 0;
   final int _size = 10;
   int _totalPages = 0;
@@ -47,6 +49,56 @@ class _OffersManagementScreenState extends State<OffersManagementScreen> {
   void _onScroll() {
     if (_scroll.position.pixels >= _scroll.position.maxScrollExtent - 280) {
       _loadMore();
+    }
+  }
+
+  Future<void> _deleteOffer(Offer offer) async {
+    if (_deleting) return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Delete offer?'),
+          content: Text(
+            'Are you sure you want to delete "${offer.name}"? This action cannot be undone.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.error,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _deleting = true);
+    try {
+      final ds = GetIt.I<OffersRemoteDataSource>();
+      await ds.deleteOffer(offerId: offer.id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Offer deleted')));
+      await _load(reset: true);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Failed to delete offer')));
+    } finally {
+      if (mounted) setState(() => _deleting = false);
     }
   }
 
@@ -121,6 +173,91 @@ class _OffersManagementScreenState extends State<OffersManagementScreen> {
     );
     if (created == true && mounted) {
       await _load(reset: true);
+    }
+  }
+
+  Future<DateTime?> _pickDateTime({
+    required DateTime initial,
+    required String title,
+  }) async {
+    final pickedDate = await showDatePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+      initialDate: initial,
+      helpText: title,
+    );
+    if (pickedDate == null) return null;
+
+    final pickedTime = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: initial.hour, minute: initial.minute),
+      builder: (context, child) {
+        final media = MediaQuery.of(context);
+        return MediaQuery(
+          data: media.copyWith(alwaysUse24HourFormat: true),
+          child: child!,
+        );
+      },
+    );
+    if (pickedTime == null) return null;
+
+    return DateTime(
+      pickedDate.year,
+      pickedDate.month,
+      pickedDate.day,
+      pickedTime.hour,
+      pickedTime.minute,
+    );
+  }
+
+  Future<void> _reactivate(Offer offer) async {
+    if (_reactivating) return;
+
+    final now = DateTime.now();
+    final startInitial = now;
+    final endInitial = now.add(const Duration(minutes: 30));
+
+    final start = await _pickDateTime(
+      initial: startInitial,
+      title: 'Select start date & time',
+    );
+    if (start == null) return;
+
+    final end = await _pickDateTime(
+      initial: endInitial.isAfter(start) ? endInitial : start,
+      title: 'Select end date & time',
+    );
+    if (end == null) return;
+
+    if (end.isBefore(start)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('End time must be after start time')),
+      );
+      return;
+    }
+
+    setState(() => _reactivating = true);
+    try {
+      final ds = GetIt.I<OffersRemoteDataSource>();
+      await ds.reactivateOffer(
+        offerId: offer.id,
+        startDate: start,
+        endDate: end,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Offer reactivated')));
+      await _load(reset: true);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to reactivate offer')),
+      );
+    } finally {
+      if (mounted) setState(() => _reactivating = false);
     }
   }
 
@@ -216,7 +353,17 @@ class _OffersManagementScreenState extends State<OffersManagementScreen> {
                                       ),
                                     );
                                   }
-                                  return _OfferCard(data: _items[index])
+                                  final item = _items[index];
+                                  return _OfferCard(
+                                        data: item,
+                                        onReactivate:
+                                            !_activeOnly && !_reactivating
+                                            ? () => _reactivate(item)
+                                            : null,
+                                        onDelete: !_deleting
+                                            ? () => _deleteOffer(item)
+                                            : null,
+                                      )
                                       .animate()
                                       .fadeIn(duration: 200.ms)
                                       .slideY(
@@ -238,7 +385,9 @@ class _OffersManagementScreenState extends State<OffersManagementScreen> {
 
 class _OfferCard extends StatelessWidget {
   final Offer data;
-  const _OfferCard({required this.data});
+  final VoidCallback? onReactivate;
+  final VoidCallback? onDelete;
+  const _OfferCard({required this.data, this.onReactivate, this.onDelete});
 
   String _date(DateTime? d) {
     if (d == null) return '—';
@@ -268,6 +417,13 @@ class _OfferCard extends StatelessWidget {
                       ),
                     ),
                   ),
+                  if (onDelete != null)
+                    IconButton(
+                      onPressed: onDelete,
+                      icon: const Icon(Icons.delete_outline_rounded),
+                      color: AppColors.error,
+                      tooltip: 'Delete',
+                    ),
                   _StatusPill(active: data.active),
                 ],
               ),
@@ -318,6 +474,18 @@ class _OfferCard extends StatelessWidget {
                   ),
                 ],
               ),
+              if (!data.active && onReactivate != null) ...[
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  height: 44,
+                  child: OutlinedButton.icon(
+                    onPressed: onReactivate,
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: const Text('Reactivate'),
+                  ),
+                ),
+              ],
             ],
           ),
         ),

@@ -27,13 +27,55 @@ class App extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    const primary = [Color(0xFFFF7A00), Color(0xFFFF5722)];
+    final colorScheme = ColorScheme.light(
+      primary: primary[0],
+      secondary: primary[1],
+    );
     return MaterialApp(
       title: 'LB Business',
       navigatorKey: navigatorKey,
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF16A34A)),
+        colorScheme: colorScheme,
         useMaterial3: true,
+        dialogTheme: const DialogThemeData(
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.white,
+        ),
+        datePickerTheme: DatePickerThemeData(
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.white,
+          headerBackgroundColor: primary[0],
+          headerForegroundColor: Colors.white,
+          dayForegroundColor: WidgetStateProperty.resolveWith<Color?>((states) {
+            if (states.contains(WidgetState.selected)) {
+              return Colors.white;
+            }
+            return null;
+          }),
+          dayBackgroundColor: WidgetStateProperty.resolveWith<Color?>((states) {
+            if (states.contains(WidgetState.selected)) {
+              return primary[0];
+            }
+            return null;
+          }),
+          todayForegroundColor: WidgetStateProperty.resolveWith<Color?>((
+            states,
+          ) {
+            if (states.contains(WidgetState.selected)) {
+              return Colors.white;
+            }
+            return Colors.orange[700];
+          }),
+          todayBorder: BorderSide(color: primary[0]),
+          confirmButtonStyle: ButtonStyle(
+            foregroundColor: WidgetStateProperty.all<Color>(primary[0]),
+          ),
+          cancelButtonStyle: ButtonStyle(
+            foregroundColor: WidgetStateProperty.all<Color>(primary[0]),
+          ),
+        ),
       ),
       initialRoute: AppRoutes.splash,
       onGenerateRoute: AppRouteGenerator.generateRoute,
