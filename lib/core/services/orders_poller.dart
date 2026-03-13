@@ -80,7 +80,7 @@ class OrdersPoller {
                     await _stopSound();
                     await _repo.updateOrderStatus(
                       orderNumber: order['orderNumber']?.toString() ?? '',
-                      status: 'ACCEPTED',
+                      status: 'PREPARING',
                       notes: '0',
                     );
                     navigatorKey.currentState?.pop();

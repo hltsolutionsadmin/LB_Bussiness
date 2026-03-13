@@ -82,20 +82,20 @@ class Offer extends Equatable {
 
   @override
   List<Object?> get props => [
-        id,
-        name,
-        offerType,
-        value,
-        minOrderValue,
-        couponCode,
-        startDate,
-        endDate,
-        businessId,
-        active,
-        description,
-        productIds,
-        categoryIds,
-      ];
+    id,
+    name,
+    offerType,
+    value,
+    minOrderValue,
+    couponCode,
+    startDate,
+    endDate,
+    businessId,
+    active,
+    description,
+    productIds,
+    categoryIds,
+  ];
 }
 
 class OfferPage extends Equatable {
@@ -116,7 +116,7 @@ class OfferPage extends Equatable {
 class SaveOfferRequest extends Equatable {
   final String name;
   final String offerType;
-  final String value;
+  final double value;
   final double minOrderValue;
   final String couponCode;
   final DateTime startDate;
@@ -126,6 +126,9 @@ class SaveOfferRequest extends Equatable {
   final String description;
   final List<int> productIds;
   final List<int> categoryIds;
+  final String targetType;
+  final int windowMinutes;
+  final int maxClaimsPerWindow;
 
   const SaveOfferRequest({
     required this.name,
@@ -138,40 +141,55 @@ class SaveOfferRequest extends Equatable {
     required this.businessId,
     required this.active,
     required this.description,
+    required this.targetType,
+    required this.windowMinutes,
+    required this.maxClaimsPerWindow,
     this.productIds = const [],
     this.categoryIds = const [],
   });
 
   Map<String, dynamic> toJson() {
+    String isoNoMillis(DateTime d) {
+      final s = d.toIso8601String();
+      final idx = s.indexOf('.');
+      return idx == -1 ? s : s.substring(0, idx);
+    }
+
     return {
       'name': name,
       'offerType': offerType,
       'value': value,
       'minOrderValue': minOrderValue,
       'couponCode': couponCode,
-      'startDate': startDate.toIso8601String(),
-      'endDate': endDate.toIso8601String(),
+      'startDate': isoNoMillis(startDate),
+      'endDate': isoNoMillis(endDate),
       'businessId': businessId,
       'active': active,
       'description': description,
       'productIds': productIds,
       'categoryIds': categoryIds,
+      'targetType': targetType,
+      'windowMinutes': windowMinutes,
+      'maxClaimsPerWindow': maxClaimsPerWindow,
     };
   }
 
   @override
   List<Object?> get props => [
-        name,
-        offerType,
-        value,
-        minOrderValue,
-        couponCode,
-        startDate,
-        endDate,
-        businessId,
-        active,
-        description,
-        productIds,
-        categoryIds,
-      ];
+    name,
+    offerType,
+    value,
+    minOrderValue,
+    couponCode,
+    startDate,
+    endDate,
+    businessId,
+    active,
+    description,
+    productIds,
+    categoryIds,
+    targetType,
+    windowMinutes,
+    maxClaimsPerWindow,
+  ];
 }

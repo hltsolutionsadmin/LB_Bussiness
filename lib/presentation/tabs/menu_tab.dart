@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:local_basket_business/core/utils/responsive.dart';
 import 'package:local_basket_business/di/locator.dart';
@@ -19,6 +21,8 @@ class _MenuTabState extends State<MenuTab> {
   String _searchQuery = '';
   String _selectedCategory = 'all';
   final ScrollController _scrollController = ScrollController();
+  Timer? _searchDebounce;
+  int _searchToken = 0;
 
   final List<Map<String, dynamic>> _items = [];
   bool _isLoading = false;
@@ -46,6 +50,14 @@ class _MenuTabState extends State<MenuTab> {
     final result = await showProductFormSheet(context, existing: existing);
     if (result == true) {
       await _loadPage(refresh: true);
+    }
+  }
+
+  Future<void> _prefetchAllPagesForSearch(int token) async {
+    while (mounted && _hasNext && _searchQuery.trim().isNotEmpty) {
+      if (token != _searchToken) return;
+      await _loadPage();
+      if (token != _searchToken) return;
     }
   }
 
@@ -115,6 +127,7 @@ class _MenuTabState extends State<MenuTab> {
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _scrollController.dispose();
     super.dispose();
   }
@@ -122,7 +135,8 @@ class _MenuTabState extends State<MenuTab> {
   @override
   Widget build(BuildContext context) {
     final filteredItems = _items.where((item) {
-      final matchesSearch = item['name'].toLowerCase().contains(
+      final name = (item['name'] ?? '').toString();
+      final matchesSearch = name.toLowerCase().contains(
         _searchQuery.toLowerCase(),
       );
       final matchesCategory =
@@ -136,7 +150,17 @@ class _MenuTabState extends State<MenuTab> {
         children: [
           // Search Bar & Add Button
           SearchAddBar(
-            onSearchChanged: (value) => setState(() => _searchQuery = value),
+            onSearchChanged: (value) {
+              setState(() => _searchQuery = value);
+              _searchDebounce?.cancel();
+              _searchToken++;
+              final token = _searchToken;
+              _searchDebounce = Timer(const Duration(milliseconds: 300), () {
+                if (!mounted) return;
+                if (_searchQuery.trim().isEmpty) return;
+                _prefetchAllPagesForSearch(token);
+              });
+            },
             onAddPressed: () => _openProductForm(),
             onExportPressed: _exportMoved,
           ),

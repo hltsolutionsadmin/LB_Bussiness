@@ -17,11 +17,12 @@ class _SaveOfferScreenState extends State<SaveOfferScreen> {
   final _formKey = GlobalKey<FormState>();
 
   final _nameCtrl = TextEditingController();
-  final _offerTypeCtrl = TextEditingController(text: 'LUCKY_ONE_RUPEE');
-  final _valueCtrl = TextEditingController(text: '1');
   final _minOrderCtrl = TextEditingController(text: '1');
   final _couponCtrl = TextEditingController();
   final _descCtrl = TextEditingController(text: '');
+  final _targetTypeCtrl = TextEditingController(text: 'LUCKY_ONE_RUPEE');
+  final _windowMinutesCtrl = TextEditingController(text: '10');
+  final _maxClaimsCtrl = TextEditingController(text: '1');
 
   bool _active = true;
   DateTime _start = DateTime(
@@ -40,11 +41,12 @@ class _SaveOfferScreenState extends State<SaveOfferScreen> {
   @override
   void dispose() {
     _nameCtrl.dispose();
-    _offerTypeCtrl.dispose();
-    _valueCtrl.dispose();
     _minOrderCtrl.dispose();
     _couponCtrl.dispose();
     _descCtrl.dispose();
+    _targetTypeCtrl.dispose();
+    _windowMinutesCtrl.dispose();
+    _maxClaimsCtrl.dispose();
     super.dispose();
   }
 
@@ -70,19 +72,45 @@ class _SaveOfferScreenState extends State<SaveOfferScreen> {
 
   String _dateLabel(DateTime d) {
     String two(int v) => v < 10 ? '0$v' : '$v';
-    return '${d.year}-${two(d.month)}-${two(d.day)}';
+    return '${d.year}-${two(d.month)}-${two(d.day)} ${two(d.hour)}:${two(d.minute)}';
   }
 
-  Future<void> _pickStart() async {
-    final picked = await showDatePicker(
+  Future<DateTime?> _pickDateTime({required DateTime initial}) async {
+    final pickedDate = await showDatePicker(
       context: context,
       firstDate: DateTime(2020),
       lastDate: DateTime(2100),
-      initialDate: _start,
+      initialDate: initial,
     );
+    if (pickedDate == null) return null;
+
+    final pickedTime = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: initial.hour, minute: initial.minute),
+      builder: (context, child) {
+        final media = MediaQuery.of(context);
+        return MediaQuery(
+          data: media.copyWith(alwaysUse24HourFormat: true),
+          child: child!,
+        );
+      },
+    );
+    if (pickedTime == null) return null;
+
+    return DateTime(
+      pickedDate.year,
+      pickedDate.month,
+      pickedDate.day,
+      pickedTime.hour,
+      pickedTime.minute,
+    );
+  }
+
+  Future<void> _pickStart() async {
+    final picked = await _pickDateTime(initial: _start);
     if (picked == null) return;
     setState(() {
-      _start = DateTime(picked.year, picked.month, picked.day);
+      _start = picked;
       if (_end.isBefore(_start)) {
         _end = _start;
       }
@@ -90,15 +118,10 @@ class _SaveOfferScreenState extends State<SaveOfferScreen> {
   }
 
   Future<void> _pickEnd() async {
-    final picked = await showDatePicker(
-      context: context,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2100),
-      initialDate: _end,
-    );
+    final picked = await _pickDateTime(initial: _end);
     if (picked == null) return;
     setState(() {
-      _end = DateTime(picked.year, picked.month, picked.day, 23, 59, 59);
+      _end = picked;
       if (_end.isBefore(_start)) {
         _start = DateTime(_end.year, _end.month, _end.day);
       }
@@ -117,12 +140,32 @@ class _SaveOfferScreenState extends State<SaveOfferScreen> {
       return;
     }
 
+    final windowMinutes = int.tryParse(_windowMinutesCtrl.text.trim()) ?? 0;
+    if (windowMinutes <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Window minutes must be greater than 0')),
+      );
+      return;
+    }
+
+    final maxClaims = int.tryParse(_maxClaimsCtrl.text.trim()) ?? 0;
+    if (maxClaims <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Max claims per window must be greater than 0'),
+        ),
+      );
+      return;
+    }
+
+    const categoryIds = <int>[5];
+
     setState(() => _saving = true);
     try {
       final req = SaveOfferRequest(
         name: _nameCtrl.text.trim(),
-        offerType: _offerTypeCtrl.text.trim(),
-        value: _valueCtrl.text.trim(),
+        offerType: 'FLAT',
+        value: 50.00,
         minOrderValue: minOrder,
         couponCode: _couponCtrl.text.trim(),
         startDate: _start,
@@ -130,8 +173,11 @@ class _SaveOfferScreenState extends State<SaveOfferScreen> {
         businessId: widget.businessId,
         active: _active,
         description: _descCtrl.text.trim(),
+        targetType: _targetTypeCtrl.text.trim(),
+        windowMinutes: windowMinutes,
+        maxClaimsPerWindow: maxClaims,
         productIds: const [],
-        categoryIds: const [],
+        categoryIds: categoryIds,
       );
 
       await GetIt.I<OffersRemoteDataSource>().saveOffer(req);
@@ -247,58 +293,21 @@ class _SaveOfferScreenState extends State<SaveOfferScreen> {
                           ),
                           const SizedBox(height: 12),
                           TextFormField(
-                            controller: _offerTypeCtrl,
+                            controller: _minOrderCtrl,
+                            keyboardType: TextInputType.number,
                             decoration: _dec(
-                              label: 'Offer Type',
-                              icon: Icons.category_outlined,
-                              hint: 'e.g. LUCKY_ONE_RUPEE',
+                              label: 'Min Order Value',
+                              icon: Icons.currency_rupee,
                             ),
                             validator: (v) {
                               if (v == null || v.trim().isEmpty) {
-                                return 'Offer type is required';
+                                return 'Min order value is required';
                               }
+                              final parsed = double.tryParse(v.trim());
+                              if (parsed == null) return 'Invalid number';
+                              if (parsed <= 0) return 'Must be > 0';
                               return null;
                             },
-                          ),
-                          const SizedBox(height: 12),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: TextFormField(
-                                  controller: _valueCtrl,
-                                  decoration: _dec(
-                                    label: 'Value',
-                                    icon: Icons.confirmation_number_outlined,
-                                  ),
-                                  validator: (v) {
-                                    if (v == null || v.trim().isEmpty) {
-                                      return 'Value is required';
-                                    }
-                                    return null;
-                                  },
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: TextFormField(
-                                  controller: _minOrderCtrl,
-                                  keyboardType: TextInputType.number,
-                                  decoration: _dec(
-                                    label: 'Min Order Value',
-                                    icon: Icons.currency_rupee,
-                                  ),
-                                  validator: (v) {
-                                    if (v == null || v.trim().isEmpty) {
-                                      return 'Min order value is required';
-                                    }
-                                    final parsed = double.tryParse(v.trim());
-                                    if (parsed == null) return 'Invalid number';
-                                    if (parsed <= 0) return 'Must be > 0';
-                                    return null;
-                                  },
-                                ),
-                              ),
-                            ],
                           ),
                           const SizedBox(height: 12),
                           TextFormField(
@@ -313,6 +322,65 @@ class _SaveOfferScreenState extends State<SaveOfferScreen> {
                               }
                               return null;
                             },
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: _targetTypeCtrl,
+                            decoration: _dec(
+                              label: 'Target Type',
+                              icon: Icons.bolt_outlined,
+                              hint: 'e.g. LUCKY_ONE_RUPEE',
+                            ),
+                            validator: (v) {
+                              if (v == null || v.trim().isEmpty) {
+                                return 'Target type is required';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextFormField(
+                                  controller: _windowMinutesCtrl,
+                                  keyboardType: TextInputType.number,
+                                  decoration: _dec(
+                                    label: 'Window Minutes',
+                                    icon: Icons.timer_outlined,
+                                  ),
+                                  validator: (v) {
+                                    if (v == null || v.trim().isEmpty) {
+                                      return 'Required';
+                                    }
+                                    final parsed = int.tryParse(v.trim());
+                                    if (parsed == null) return 'Invalid';
+                                    if (parsed <= 0) return 'Must be > 0';
+                                    return null;
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: TextFormField(
+                                  controller: _maxClaimsCtrl,
+                                  keyboardType: TextInputType.number,
+                                  decoration: _dec(
+                                    label: 'Max Claims / Window',
+                                    icon: Icons.groups_outlined,
+                                  ),
+                                  validator: (v) {
+                                    if (v == null || v.trim().isEmpty) {
+                                      return 'Required';
+                                    }
+                                    final parsed = int.tryParse(v.trim());
+                                    if (parsed == null) return 'Invalid';
+                                    if (parsed <= 0) return 'Must be > 0';
+                                    return null;
+                                  },
+                                ),
+                              ),
+                            ],
                           ),
                           const SizedBox(height: 12),
                           Row(

@@ -29,14 +29,14 @@ class OffersRemoteDataSource {
     final token = await _storage.readToken();
     if (kDebugMode) {
       debugPrint(
-        '[API] List Offers -> GET /product/api/offers/list?businessId=$businessId&active=$active&page=$page&size=$size',
+        '[API] List Offers -> GET /product/api/offers/list?active=$active&page=$page&size=$size',
       );
     }
 
     final res = await _client.dio.get(
       '/product/api/offers/list',
       queryParameters: {
-        'businessId': businessId,
+        // if (businessId != 0) 'businessId': businessId,
         'active': active,
         'page': page,
         'size': size,
@@ -84,6 +84,58 @@ class OffersRemoteDataSource {
     final res = await _client.dio.post(
       '/product/api/offers/save',
       data: req.toJson(),
+      options: _authOptions(token),
+    );
+
+    if (res.data is Map) {
+      return (res.data as Map).cast<String, dynamic>();
+    }
+    return {'data': res.data};
+  }
+
+  Future<Map<String, dynamic>> reactivateOffer({
+    required int offerId,
+    required DateTime startDate,
+    required DateTime endDate,
+  }) async {
+    String isoNoMillis(DateTime d) {
+      final s = d.toIso8601String();
+      final idx = s.indexOf('.');
+      return idx == -1 ? s : s.substring(0, idx);
+    }
+
+    final token = await _storage.readToken();
+    final start = isoNoMillis(startDate);
+    final end = isoNoMillis(endDate);
+
+    if (kDebugMode) {
+      debugPrint(
+        '[API] Reactivate Offer -> PUT /product/api/offers/$offerId/reactivate?startDate=$start&endDate=$end',
+      );
+    }
+
+    final res = await _client.dio.put(
+      '/product/api/offers/$offerId/reactivate',
+      queryParameters: {'startDate': start, 'endDate': end},
+      options: _authOptions(token),
+    );
+
+    if (res.data is Map) {
+      return (res.data as Map).cast<String, dynamic>();
+    }
+    return {'data': res.data};
+  }
+
+  Future<Map<String, dynamic>> deleteOffer({required int offerId}) async {
+    final token = await _storage.readToken();
+    if (kDebugMode) {
+      debugPrint(
+        '[API] Delete Offer -> DELETE /product/api/offers/offer/$offerId',
+      );
+    }
+
+    final res = await _client.dio.delete(
+      '/product/api/offers/offer/$offerId',
       options: _authOptions(token),
     );
 
