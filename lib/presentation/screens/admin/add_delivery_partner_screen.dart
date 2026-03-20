@@ -14,6 +14,7 @@ class _AddDeliveryPartnerScreenState extends State<AddDeliveryPartnerScreen> {
   final _formKey = GlobalKey<FormState>();
   final _vehicleController = TextEditingController();
   final _mobileController = TextEditingController();
+  final _fullNameController = TextEditingController();
 
   bool _available = true;
   bool _submitting = false;
@@ -22,6 +23,7 @@ class _AddDeliveryPartnerScreenState extends State<AddDeliveryPartnerScreen> {
   void dispose() {
     _vehicleController.dispose();
     _mobileController.dispose();
+    _fullNameController.dispose();
     super.dispose();
   }
 
@@ -35,6 +37,7 @@ class _AddDeliveryPartnerScreenState extends State<AddDeliveryPartnerScreen> {
         vehicleNumber: _vehicleController.text.trim(),
         available: _available,
         mobileNumber: _mobileController.text.trim(),
+        fullName: _fullNameController.text.trim(),
       );
       if (!mounted) return;
       Navigator.of(context).pop(res);
@@ -98,7 +101,8 @@ class _AddDeliveryPartnerScreenState extends State<AddDeliveryPartnerScreen> {
                         textCapitalization: TextCapitalization.characters,
                         decoration: InputDecoration(
                           labelText: 'Vehicle Number',
-                          hintText: 'KA 05 AB 1234',
+                          hintText: 'AP09 AB 1234',
+                          hintStyle: const TextStyle(color: Colors.grey),
                           prefixIcon: const Icon(Icons.directions_bike),
                           filled: true,
                           fillColor: const Color(0xFFF4F6FA),
@@ -122,10 +126,39 @@ class _AddDeliveryPartnerScreenState extends State<AddDeliveryPartnerScreen> {
                       TextFormField(
                         controller: _mobileController,
                         keyboardType: TextInputType.phone,
+                        maxLength: 10,
                         decoration: InputDecoration(
                           labelText: 'Mobile Number',
-                          hintText: '9295012126',
+                          hintText: '0000000000',
+                          hintStyle: const TextStyle(color: Colors.grey),
                           prefixIcon: const Icon(Icons.phone_android),
+                          filled: true,
+                          fillColor: const Color(0xFFF4F6FA),
+                          counterText: "", // This removes 10/10 counter
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                        validator: (v) {
+                          final t = v?.trim() ?? '';
+                          if (t.isEmpty) return 'Mobile number is required';
+                          if (t.length < 10) {
+                            return 'Enter a valid mobile number';
+                          }
+                          return null;
+                        },
+                      ),
+
+                      const SizedBox(height: 20),
+                      TextFormField(
+                        controller: _fullNameController,
+                        // keyboardType: TextInputType.phone,
+                        decoration: InputDecoration(
+                          labelText: 'Full Name',
+                          hintText: 'Full Name',
+                          hintStyle: const TextStyle(color: Colors.grey),
+                          prefixIcon: const Icon(Icons.person),
                           filled: true,
                           fillColor: const Color(0xFFF4F6FA),
                           border: OutlineInputBorder(

@@ -14,14 +14,36 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _phoneController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+  final FocusNode _phoneFocusNode = FocusNode();
 
   String? _errorText;
   bool _isSubmitting = false;
-  bool _agreedToTerms = false;
+  String? _debugOtp;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _phoneFocusNode.requestFocus();
+      _scrollToBottom();
+    });
+  }
+
+  void _scrollToBottom() {
+    if (!_scrollController.hasClients) return;
+    _scrollController.animateTo(
+      _scrollController.position.maxScrollExtent,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
+    );
+  }
 
   void _handleSubmit() async {
     setState(() {
       _errorText = null;
+      _debugOtp = null;
       _isSubmitting = true;
     });
 
@@ -34,24 +56,39 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     try {
-      await sl<AuthRepository>().triggerOtp(
+      final res = await sl<AuthRepository>().triggerOtpWithResponse(
         otpType: 'SIGNIN',
         primaryContact: _phoneController.text,
       );
 
+      final otp = res['otp']?.toString();
+      if (mounted && otp != null && otp.isNotEmpty) {
+        setState(() => _debugOtp = otp);
+      }
+
       if (!mounted) return;
 
-      Navigator.push(
+      await Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => OTPScreen(phoneNumber: _phoneController.text),
+          builder: (_) => OTPScreen(
+            phoneNumber: _phoneController.text,
+            debugOtp: _debugOtp,
+          ),
         ),
       );
     } catch (e) {
-      setState(() {
-        _errorText = 'Failed to send OTP';
-        _isSubmitting = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorText = 'Failed to send OTP';
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+        });
+      }
     }
   }
 
@@ -72,6 +109,7 @@ class _LoginScreenState extends State<LoginScreen> {
             builder: (context, constraints) {
               return SingleChildScrollView(
                 reverse: true,
+                controller: _scrollController,
                 padding: EdgeInsets.only(
                   left: 16,
                   right: 16,
@@ -202,6 +240,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     Expanded(
                                       child: TextField(
                                         controller: _phoneController,
+                                        focusNode: _phoneFocusNode,
                                         keyboardType: TextInputType.phone,
                                         maxLength: 10,
                                         inputFormatters: [
@@ -214,6 +253,10 @@ class _LoginScreenState extends State<LoginScreen> {
                                           border: InputBorder.none,
                                           counterText: '',
                                         ),
+                                        onTap: _scrollToBottom,
+                                        onChanged: (_) {
+                                          _scrollToBottom();
+                                        },
                                       ),
                                     ),
                                   ],
@@ -238,11 +281,16 @@ class _LoginScreenState extends State<LoginScreen> {
                                 width: double.infinity,
                                 height: 60,
                                 child: ElevatedButton(
-                                  onPressed: (_isSubmitting || !_agreedToTerms)
+                                  onPressed: _isSubmitting
                                       ? null
                                       : _handleSubmit,
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFFFF6B35),
+                                    backgroundColor: const Color.fromARGB(
+                                      255,
+                                      239,
+                                      134,
+                                      95,
+                                    ),
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(16),
                                     ),
@@ -261,6 +309,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                               style: TextStyle(
                                                 fontSize: 18,
                                                 fontWeight: FontWeight.bold,
+                                                color: Colors.white,
                                               ),
                                             ),
                                             SizedBox(width: 12),
@@ -273,38 +322,40 @@ class _LoginScreenState extends State<LoginScreen> {
                               const SizedBox(height: 24),
 
                               // Terms
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Checkbox(
-                                    value: _agreedToTerms,
-                                    onChanged: (v) => setState(
-                                      () => _agreedToTerms = v ?? false,
+                              Center(
+                                child: Wrap(
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  children: [
+                                    const Text(
+                                      'By continuing, You agree to our ',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Color(0xFF6B7280),
+                                      ),
                                     ),
-                                  ),
-                                  const Text(
-                                    'I agree to ',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Color(0xFF6B7280),
+                                    TextButton(
+                                      onPressed: () async {
+                                        await Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) =>
+                                                const TermsAndConditionsScreen(),
+                                          ),
+                                        );
+                                      },
+                                      style: TextButton.styleFrom(
+                                        padding: EdgeInsets.zero,
+                                        minimumSize: const Size(0, 0),
+                                        tapTargetSize:
+                                            MaterialTapTargetSize.shrinkWrap,
+                                      ),
+                                      child: const Text(
+                                        'Terms & Conditions',
+                                        style: TextStyle(fontSize: 12),
+                                      ),
                                     ),
-                                  ),
-                                  TextButton(
-                                    onPressed: () async {
-                                      await Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (_) =>
-                                              const TermsAndConditionsScreen(),
-                                        ),
-                                      );
-                                      if (mounted) {
-                                        setState(() => _agreedToTerms = true);
-                                      }
-                                    },
-                                    child: const Text('Terms & Conditions'),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
                             ],
                           ),
@@ -324,6 +375,8 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void dispose() {
     _phoneController.dispose();
+    _scrollController.dispose();
+    _phoneFocusNode.dispose();
     super.dispose();
   }
 }

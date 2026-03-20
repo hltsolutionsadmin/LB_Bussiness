@@ -170,8 +170,6 @@ class _SaveOfferScreenState extends State<SaveOfferScreen> {
         couponCode: _couponCtrl.text.trim(),
         startDate: _start,
         endDate: _end,
-        businessId: widget.businessId,
-        active: _active,
         description: _descCtrl.text.trim(),
         targetType: _targetTypeCtrl.text.trim(),
         windowMinutes: windowMinutes,

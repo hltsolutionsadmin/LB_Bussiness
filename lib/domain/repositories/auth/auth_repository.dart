@@ -3,6 +3,12 @@ abstract class AuthRepository {
     required String otpType,
     required String primaryContact,
   });
+
+  Future<Map<String, dynamic>> triggerOtpWithResponse({
+    required String otpType,
+    required String primaryContact,
+  });
+
   Future<String> loginWithOtp({
     required String otp,
     required String primaryContact,

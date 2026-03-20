@@ -21,9 +21,6 @@ class AuthRemoteDataSource {
   }
 
   Future<void> triggerOtp(TriggerOtpRequest req) async {
-    print(
-      '[API] Trigger OTP -> POST /usermgmt/auth/jtuserotp/trigger/otp?triggerOtp=false',
-    );
     print('[API] Request: ${req.toJson()}');
     await _client.dio
         .post(
@@ -36,6 +33,22 @@ class AuthRemoteDataSource {
           print('[API] Trigger OTP Response: ${res.statusCode}');
           print('[API] Body: ${res.data}');
         });
+  }
+
+  Future<Map<String, dynamic>> triggerOtpWithResponse(TriggerOtpRequest req) async {
+    print('[API] Request: ${req.toJson()}');
+    final res = await _client.dio.post(
+      '/usermgmt/auth/jtuserotp/trigger/otp',
+      queryParameters: {'triggerOtp': 'false'},
+      data: req.toJson(),
+      options: _authOptions(),
+    );
+    print('[API] Trigger OTP Response: ${res.statusCode}');
+    print('[API] Body: ${res.data}');
+    final data = res.data;
+    if (data is Map<String, dynamic>) return data;
+    if (data is Map) return Map<String, dynamic>.from(data);
+    return <String, dynamic>{'data': data};
   }
 
   Future<String> login(LoginRequest req) async {

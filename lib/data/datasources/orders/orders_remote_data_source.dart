@@ -315,14 +315,17 @@ class OrdersRemoteDataSource {
     required String frequency,
     required String fromDate,
     required String toDate,
-    required int businessId,
+    int? businessId,
     int page = 0,
     int size = 1000,
   }) async {
     final token = await _storage.readToken();
+    final int? effectiveBusinessId = (businessId != null && businessId > 0)
+        ? businessId
+        : null;
     if (kDebugMode) {
       debugPrint(
-        '[API] Download Orders Excel -> GET /order/api/orders/user/filter/excel?orderStatus=$orderStatus&frequency=$frequency&fromDate=$fromDate&toDate=$toDate&page=$page&size=$size&businessId=$businessId',
+        '[API] Download Orders Excel -> GET /order/api/orders/user/filter/excel?orderStatus=$orderStatus&frequency=$frequency&fromDate=$fromDate&toDate=$toDate&page=$page&size=$size&businessId=${effectiveBusinessId ?? ''}',
       );
     }
     final res = await _client.dio.get(
@@ -334,12 +337,12 @@ class OrdersRemoteDataSource {
         'toDate': toDate,
         'page': page,
         'size': size,
-        'restaurantId': businessId,
+        if (effectiveBusinessId != null) 'restaurantId': effectiveBusinessId,
 
         // Send the same keys as the on-screen report endpoint
         'frequency': frequency,
         'status': orderStatus,
-        'businessId': businessId,
+        if (effectiveBusinessId != null) 'businessId': effectiveBusinessId,
       },
       options: Options(
         responseType: ResponseType.bytes,

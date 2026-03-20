@@ -176,6 +176,7 @@ class DeliveryRemoteDataSource {
     required String vehicleNumber,
     required bool available,
     required String mobileNumber,
+    required String fullName,
   }) async {
     final token = await _storage.readToken();
     if (kDebugMode) {
@@ -190,6 +191,8 @@ class DeliveryRemoteDataSource {
         'vehicleNumber': vehicleNumber,
         'available': available,
         'mobileNumber': mobileNumber,
+        'fullName': fullName,
+        // 'dedicatedForOffers': false,
       },
       options: _authOptions(token),
     );

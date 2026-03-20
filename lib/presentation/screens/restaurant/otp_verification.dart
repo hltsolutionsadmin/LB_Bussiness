@@ -8,8 +8,9 @@ import 'package:local_basket_business/core/session/session_store.dart';
 
 class OTPScreen extends StatefulWidget {
   final String phoneNumber;
+  final String? debugOtp;
 
-  const OTPScreen({super.key, required this.phoneNumber});
+  const OTPScreen({super.key, required this.phoneNumber, this.debugOtp});
 
   @override
   State<OTPScreen> createState() => _OTPScreenState();
@@ -21,8 +22,10 @@ class _OTPScreenState extends State<OTPScreen> {
     (_) => TextEditingController(),
   );
   final List<FocusNode> _focusNodes = List.generate(6, (_) => FocusNode());
+  final ScrollController _scrollController = ScrollController();
 
   String? _errorText;
+  String? _debugOtp;
   int _timer = 30;
   Timer? _countdownTimer;
   bool _isSubmitting = false;
@@ -30,7 +33,22 @@ class _OTPScreenState extends State<OTPScreen> {
   @override
   void initState() {
     super.initState();
+    _debugOtp = widget.debugOtp;
     _startTimer();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _focusNodes.first.requestFocus();
+      _scrollToBottom();
+    });
+  }
+
+  void _scrollToBottom() {
+    if (!_scrollController.hasClients) return;
+    _scrollController.animateTo(
+      _scrollController.position.maxScrollExtent,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
+    );
   }
 
   void _startTimer() {
@@ -112,10 +130,17 @@ class _OTPScreenState extends State<OTPScreen> {
     setState(() => _isSubmitting = true);
 
     try {
-      await sl<AuthRepository>().triggerOtp(
+      final res = await sl<AuthRepository>().triggerOtpWithResponse(
         otpType: 'SIGNIN',
         primaryContact: widget.phoneNumber,
       );
+
+      final otp = res['otp']?.toString();
+      if (mounted && otp != null && otp.isNotEmpty) {
+        setState(() => _debugOtp = otp);
+      } else {
+        if (mounted) setState(() => _debugOtp = null);
+      }
 
       for (final c in _controllers) {
         c.clear();
@@ -150,6 +175,7 @@ class _OTPScreenState extends State<OTPScreen> {
             builder: (context, constraints) {
               return SingleChildScrollView(
                 reverse: true,
+                controller: _scrollController,
                 padding: EdgeInsets.only(
                   left: 16,
                   right: 16,
@@ -229,6 +255,34 @@ class _OTPScreenState extends State<OTPScreen> {
                                         fontWeight: FontWeight.w600,
                                       ),
                                     ),
+                                    if ((_debugOtp ?? '').isNotEmpty) ...[
+                                      const SizedBox(height: 12),
+                                      Container(
+                                        width: double.infinity,
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 10,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFF3F4F6),
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                          border: Border.all(
+                                            color: const Color(0xFFE5E7EB),
+                                          ),
+                                        ),
+                                        child: Text(
+                                          'OTP: ${_debugOtp!}',
+                                          textAlign: TextAlign.center,
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w700,
+                                            letterSpacing: 1.2,
+                                            color: Color(0xFF111827),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                     const SizedBox(height: 32),
 
                                     // OTP Fields
@@ -269,6 +323,7 @@ class _OTPScreenState extends State<OTPScreen> {
                                                 _focusNodes[index + 1]
                                                     .requestFocus();
                                               }
+                                              _scrollToBottom();
                                               setState(() => _errorText = null);
                                             },
                                           ),
@@ -298,8 +353,9 @@ class _OTPScreenState extends State<OTPScreen> {
                                             : _handleVerify,
                                         style: ElevatedButton.styleFrom(
                                           backgroundColor: const Color(
-                                            0xFFF97316,
+                                            0xFFEF865F,
                                           ),
+
                                           shape: RoundedRectangleBorder(
                                             borderRadius: BorderRadius.circular(
                                               16,
@@ -316,6 +372,7 @@ class _OTPScreenState extends State<OTPScreen> {
                                                 style: TextStyle(
                                                   fontSize: 16,
                                                   fontWeight: FontWeight.w600,
+                                                  color: Colors.white,
                                                 ),
                                               ),
                                       ),
@@ -374,6 +431,7 @@ class _OTPScreenState extends State<OTPScreen> {
     for (final n in _focusNodes) {
       n.dispose();
     }
+    _scrollController.dispose();
     _countdownTimer?.cancel();
     super.dispose();
   }

@@ -194,6 +194,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 
   Widget _buildQuickStats(BuildContext context) {
+    final w = MediaQuery.of(context).size.width;
+    final textScale = MediaQuery.textScalerOf(context).scale(14);
+    final ratio = (w < 360 || textScale > 1.1) ? 0.98 : 1.1;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -212,7 +216,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           physics: const NeverScrollableScrollPhysics(),
           crossAxisSpacing: 12,
           mainAxisSpacing: 12,
-          childAspectRatio: 1.1,
+          childAspectRatio: ratio,
           children: [
             StatCard(
               title: 'Total Orders',

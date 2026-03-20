@@ -121,8 +121,6 @@ class SaveOfferRequest extends Equatable {
   final String couponCode;
   final DateTime startDate;
   final DateTime endDate;
-  final int businessId;
-  final bool active;
   final String description;
   final List<int> productIds;
   final List<int> categoryIds;
@@ -138,8 +136,6 @@ class SaveOfferRequest extends Equatable {
     required this.couponCode,
     required this.startDate,
     required this.endDate,
-    required this.businessId,
-    required this.active,
     required this.description,
     required this.targetType,
     required this.windowMinutes,
@@ -163,8 +159,6 @@ class SaveOfferRequest extends Equatable {
       'couponCode': couponCode,
       'startDate': isoNoMillis(startDate),
       'endDate': isoNoMillis(endDate),
-      'businessId': businessId,
-      'active': active,
       'description': description,
       'productIds': productIds,
       'categoryIds': categoryIds,
@@ -183,8 +177,6 @@ class SaveOfferRequest extends Equatable {
     couponCode,
     startDate,
     endDate,
-    businessId,
-    active,
     description,
     productIds,
     categoryIds,

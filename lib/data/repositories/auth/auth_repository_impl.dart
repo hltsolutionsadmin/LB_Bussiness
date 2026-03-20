@@ -19,6 +19,16 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
+  Future<Map<String, dynamic>> triggerOtpWithResponse({
+    required String otpType,
+    required String primaryContact,
+  }) {
+    return _remote.triggerOtpWithResponse(
+      TriggerOtpRequest(otpType: otpType, primaryContact: primaryContact),
+    );
+  }
+
+  @override
   Future<String> loginWithOtp({
     required String otp,
     required String primaryContact,
