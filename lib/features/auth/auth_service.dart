@@ -13,6 +13,7 @@ class AuthService {
 
   Options _authOptions({String? bearer}) {
     final token = bearer ?? EnvConfig.seedBearer;
+    print('bearer token : $token');
     return Options(
       headers: {
         if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
@@ -25,9 +26,6 @@ class AuthService {
     required String otpType,
     required String primaryContact,
   }) async {
-    print(
-      '[API] Trigger OTP -> POST /usermgmt/auth/jtuserotp/trigger/otp?triggerOtp=false',
-    );
     print(
       '[API] Request: {otpType: $otpType, primaryContact: $primaryContact}',
     );

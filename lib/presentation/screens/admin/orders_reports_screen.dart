@@ -172,12 +172,13 @@ class _OrdersReportsScreenState extends State<OrdersReportsScreen>
 
     try {
       final ds = GetIt.I<OrdersRemoteDataSource>();
+      final selected = _selectedBusinessId!;
       final tempPath = await ds.downloadOrdersExcel(
         orderStatus: _status,
         frequency: _frequency,
         fromDate: DateFormat('yyyy-MM-dd').format(_from),
         toDate: DateFormat('yyyy-MM-dd').format(_to),
-        businessId: _selectedBusinessId!,
+        businessId: selected == 0 ? null : selected,
         page: _page,
         size: 1000,
       );

@@ -19,6 +19,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   String? _errorText;
   bool _isSubmitting = false;
+  String? _debugOtp;
 
   @override
   void initState() {
@@ -42,6 +43,7 @@ class _LoginScreenState extends State<LoginScreen> {
   void _handleSubmit() async {
     setState(() {
       _errorText = null;
+      _debugOtp = null;
       _isSubmitting = true;
     });
 
@@ -54,17 +56,25 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     try {
-      await sl<AuthRepository>().triggerOtp(
+      final res = await sl<AuthRepository>().triggerOtpWithResponse(
         otpType: 'SIGNIN',
         primaryContact: _phoneController.text,
       );
+
+      final otp = res['otp']?.toString();
+      if (mounted && otp != null && otp.isNotEmpty) {
+        setState(() => _debugOtp = otp);
+      }
 
       if (!mounted) return;
 
       await Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => OTPScreen(phoneNumber: _phoneController.text),
+          builder: (_) => OTPScreen(
+            phoneNumber: _phoneController.text,
+            debugOtp: _debugOtp,
+          ),
         ),
       );
     } catch (e) {

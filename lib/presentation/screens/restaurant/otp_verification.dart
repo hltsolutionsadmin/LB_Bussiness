@@ -8,8 +8,9 @@ import 'package:local_basket_business/core/session/session_store.dart';
 
 class OTPScreen extends StatefulWidget {
   final String phoneNumber;
+  final String? debugOtp;
 
-  const OTPScreen({super.key, required this.phoneNumber});
+  const OTPScreen({super.key, required this.phoneNumber, this.debugOtp});
 
   @override
   State<OTPScreen> createState() => _OTPScreenState();
@@ -24,6 +25,7 @@ class _OTPScreenState extends State<OTPScreen> {
   final ScrollController _scrollController = ScrollController();
 
   String? _errorText;
+  String? _debugOtp;
   int _timer = 30;
   Timer? _countdownTimer;
   bool _isSubmitting = false;
@@ -31,6 +33,7 @@ class _OTPScreenState extends State<OTPScreen> {
   @override
   void initState() {
     super.initState();
+    _debugOtp = widget.debugOtp;
     _startTimer();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -127,10 +130,17 @@ class _OTPScreenState extends State<OTPScreen> {
     setState(() => _isSubmitting = true);
 
     try {
-      await sl<AuthRepository>().triggerOtp(
+      final res = await sl<AuthRepository>().triggerOtpWithResponse(
         otpType: 'SIGNIN',
         primaryContact: widget.phoneNumber,
       );
+
+      final otp = res['otp']?.toString();
+      if (mounted && otp != null && otp.isNotEmpty) {
+        setState(() => _debugOtp = otp);
+      } else {
+        if (mounted) setState(() => _debugOtp = null);
+      }
 
       for (final c in _controllers) {
         c.clear();
@@ -245,6 +255,34 @@ class _OTPScreenState extends State<OTPScreen> {
                                         fontWeight: FontWeight.w600,
                                       ),
                                     ),
+                                    if ((_debugOtp ?? '').isNotEmpty) ...[
+                                      const SizedBox(height: 12),
+                                      Container(
+                                        width: double.infinity,
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 10,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFF3F4F6),
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                          border: Border.all(
+                                            color: const Color(0xFFE5E7EB),
+                                          ),
+                                        ),
+                                        child: Text(
+                                          'OTP: ${_debugOtp!}',
+                                          textAlign: TextAlign.center,
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w700,
+                                            letterSpacing: 1.2,
+                                            color: Color(0xFF111827),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                     const SizedBox(height: 32),
 
                                     // OTP Fields
