@@ -32,11 +32,14 @@ class _MenuTabState extends State<MenuTab> {
 
   final List<String> _categories = [
     'all',
-    'starters',
-    'main course',
-    'breads',
-    'beverages',
-    'desserts',
+    'Starters',
+    'Main-Course',
+    'Noodles',
+    'Tandori',
+    'Breads',
+    'Curries',
+    'Soups',
+    'Biryanis',
   ];
 
   void _exportMoved() {
@@ -49,15 +52,70 @@ class _MenuTabState extends State<MenuTab> {
   Future<void> _openProductForm({Map<String, dynamic>? existing}) async {
     final result = await showProductFormSheet(context, existing: existing);
     if (result == true) {
-      await _loadPage(refresh: true);
+      if (existing != null) {
+        // For editing, update the item in place and stay on current position
+        await _updateSingleItem(existing['id'] as int);
+      } else {
+        // For new items, refresh to show at top
+        await _loadPage(refresh: true);
+      }
     }
   }
 
   Future<void> _prefetchAllPagesForSearch(int token) async {
-    while (mounted && _hasNext && _searchQuery.trim().isNotEmpty) {
+    if (token != _searchToken) return;
+    // Only load next 2 pages for search to avoid performance issues
+    int pagesToLoad = 2;
+    while (mounted && _hasNext && _searchQuery.trim().isNotEmpty && pagesToLoad > 0) {
       if (token != _searchToken) return;
       await _loadPage();
       if (token != _searchToken) return;
+      pagesToLoad--;
+    }
+  }
+
+  Future<void> _updateSingleItem(int itemId) async {
+    final user = sl<SessionStore>().user;
+    final businessId = (user != null && user['b2bUnit'] is Map<String, dynamic>)
+        ? (user['b2bUnit']['id'] as int?)
+        : null;
+    if (businessId == null) return;
+    
+    try {
+      final repo = sl<ProductRepository>();
+      Map<String, dynamic>? updatedItem;
+            for (int page = 0; page < _page; page++) {
+        final pageData = await repo.getProducts(
+          restaurantId: businessId,
+          page: page,
+          size: _size,
+        );
+        final itemIndex = pageData.items.indexWhere((item) => item['id'] == itemId);
+        if (itemIndex != -1) {
+          updatedItem = pageData.items[itemIndex];
+          break;
+        }
+      }
+      
+      if (updatedItem != null && mounted) {
+        setState(() {
+          // Update the item in the list
+          final itemIndex = _items.indexWhere((item) => item['id'] == itemId);
+          if (itemIndex != -1) {
+            _items[itemIndex] = updatedItem!;
+          }
+        });
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Product updated successfully')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update product: $e')),
+        );
+      }
     }
   }
 
@@ -140,7 +198,7 @@ class _MenuTabState extends State<MenuTab> {
         _searchQuery.toLowerCase(),
       );
       final matchesCategory =
-          _selectedCategory == 'all' || item['category'] == _selectedCategory;
+          _selectedCategory == 'all' || item['categoryName'] == _selectedCategory;
       return matchesSearch && matchesCategory;
     }).toList();
 
@@ -169,7 +227,11 @@ class _MenuTabState extends State<MenuTab> {
           CategoryFilter(
             categories: _categories,
             selected: _selectedCategory,
-            onSelected: (c) => setState(() => _selectedCategory = c),
+            onSelected: (c) {
+              setState(() => _selectedCategory = c);
+              debugPrint('CategoryFilter - Selected category: $c--> $_selectedCategory');
+              setState(() => _selectedCategory = c);
+            },
           ),
 
           const SizedBox(height: 16),

@@ -1,15 +1,22 @@
 import 'package:dio/dio.dart';
+import 'package:local_basket_business/core/config/api_config.dart';
 import 'package:local_basket_business/core/env/env.dart';
 import 'package:local_basket_business/core/network/dio_client.dart';
 import 'package:local_basket_business/core/storage/secure_storage.dart';
 
 class AuthService {
-  AuthService({Dio? dio, AppSecureStorage? storage})
-    : _client = DioClient(dio ?? Dio()),
+  AuthService({Dio? dio, AppSecureStorage? storage, String? baseUrl})
+    : _client = DioClient(dio ?? Dio(), baseUrl ?? _getDefaultBaseUrl()),
       _storage = storage ?? AppSecureStorage();
 
   final DioClient _client;
   final AppSecureStorage _storage;
+  
+  static String _getDefaultBaseUrl() {
+    return EnvConfig.baseUrl.isNotEmpty
+        ? EnvConfig.baseUrl
+        : 'https://api-service.happybush-7c5a2823.centralindia.azurecontainerapps.io/api';
+  }
 
   Options _authOptions({String? bearer}) {
     final token = bearer ?? EnvConfig.seedBearer;
@@ -31,7 +38,7 @@ class AuthService {
     );
     await _client.dio
         .post(
-          '/usermgmt/auth/jtuserotp/trigger/otp',
+          ApiConfig.endpointsV1.triggerOtp,
           queryParameters: {'triggerOtp': 'false'},
           data: {'otpType': otpType, 'primaryContact': primaryContact},
           options: _authOptions(),
@@ -49,7 +56,7 @@ class AuthService {
     print('[API] Login -> POST /usermgmt/auth/login');
     print('[API] Request: {otp: $otp, primaryContact: $primaryContact}');
     final res = await _client.dio.post(
-      '/usermgmt/auth/login',
+      ApiConfig.endpointsV1.login,
       data: {'otp': otp, 'primaryContact': primaryContact},
       options: _authOptions(),
     );
@@ -86,7 +93,7 @@ class AuthService {
     print('[API] User Details -> GET /usermgmt/user/userDetails');
     print('[API] Using bearer: $masked');
     final res = await _client.dio.get(
-      '/usermgmt/user/userDetails',
+      ApiConfig.endpointsV1.userDetails,
       options: _authOptions(bearer: token),
     );
     print('[API] User Details Response: ${res.statusCode}');

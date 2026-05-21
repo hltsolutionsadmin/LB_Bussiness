@@ -57,8 +57,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       final res = await sl<AuthRepository>().triggerOtpWithResponse(
-        otpType: 'SIGNIN',
-        primaryContact: _phoneController.text,
+        primaryContact: '+91${_phoneController.text}',
       );
 
       final otp = res['otp']?.toString();
@@ -72,7 +71,7 @@ class _LoginScreenState extends State<LoginScreen> {
         context,
         MaterialPageRoute(
           builder: (_) => OTPScreen(
-            phoneNumber: _phoneController.text,
+            phoneNumber: '+91${_phoneController.text}',
             debugOtp: _debugOtp,
           ),
         ),

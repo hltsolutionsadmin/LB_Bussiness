@@ -1,16 +1,11 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
-import 'package:local_basket_business/core/env/env.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_basket_business/routes/app_router.dart';
 
 class DioClient {
-  DioClient(this._dio) {
-    final String rawBaseUrl = (EnvConfig.baseUrl.isNotEmpty)
-        ? EnvConfig.baseUrl
-        : 'https://api-service.happybush-7c5a2823.centralindia.azurecontainerapps.io/api';
-    // : 'http://localhost:9443/api';
-    final String normalizedBaseUrl = _normalizeApiBaseUrl(rawBaseUrl);
+  DioClient(this._dio, this.baseUrl) {
+    final String normalizedBaseUrl = baseUrl.trim().replaceAll(RegExp(r'/+$'), '');
     _dio
       ..options = BaseOptions(
         baseUrl: normalizedBaseUrl,
@@ -45,7 +40,7 @@ class DioClient {
             if (kDebugMode) {
               debugPrint('[ERR] ${e.response?.statusCode} ${e.message}');
               if (e.response != null) {
-                debugPrint('URL: ${e.response!.requestOptions.uri}');
+                debugPrint('URL:: ${e.response!.requestOptions.uri}');
                 try {
                   debugPrint('ERR BODY: ${e.response!.data}');
                 } catch (_) {
@@ -64,7 +59,6 @@ class DioClient {
                 e.response?.headers.value('content-type') ?? '';
             final String wwwAuth = headers?.value('www-authenticate') ?? '';
 
-            // Parse server hints
             final String wwwAuthLc = wwwAuth.toLowerCase();
             bool dataHintsInvalid = false;
             if (data is Map) {
@@ -97,21 +91,8 @@ class DioClient {
   }
 
   final Dio _dio;
+  final String baseUrl;
   Dio get dio => _dio;
-
-  static String _normalizeApiBaseUrl(String baseUrl) {
-    var v = baseUrl.trim();
-    while (v.endsWith('/')) {
-      v = v.substring(0, v.length - 1);
-    }
-
-    // Ensure all endpoints in the app can safely use paths like `/order/api/...`
-    // by guaranteeing the baseUrl points to the API root.
-    if (!v.toLowerCase().endsWith('/api')) {
-      v = '$v/api';
-    }
-    return v;
-  }
 
   static bool _loggingOut = false;
   Future<void> _handleLogoutOnTokenExpiry() async {
@@ -120,7 +101,6 @@ class DioClient {
     try {
       const storage = FlutterSecureStorage();
       await storage.deleteAll();
-      // Navigate to login, clearing the stack
       navigatorKey.currentState?.pushNamedAndRemoveUntil(
         AppRoutes.login,
         (route) => false,
@@ -128,7 +108,6 @@ class DioClient {
     } catch (_) {
       // ignore
     } finally {
-      // allow future attempts after navigation completes
       _loggingOut = false;
     }
   }

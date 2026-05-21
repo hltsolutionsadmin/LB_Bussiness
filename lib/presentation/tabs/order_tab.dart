@@ -355,8 +355,32 @@ class _OrdersTabState extends State<OrdersTab> {
                     : filteredOrders.length +
                           ((_hasNext && _selectedFilter == 'all') ? 1 : 0),
                 itemBuilder: (context, index) {
-                  // Empty state when no items in current filter
+                  // Show loader during initial load, empty state only after loading completes
                   if (filteredOrders.isEmpty) {
+                    // Show loader during initial load
+                    if (_loading && _isInitialLoad) {
+                      return const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 56),
+                        child: Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              CircularProgressIndicator(),
+                              SizedBox(height: 16),
+                              Text(
+                                'Loading orders...',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Color(0xFF6B7280),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }
+                    
+                    // Show empty state only after loading completes
                     final title = _selectedFilter == 'all'
                         ? 'No orders yet'
                         : 'No $_selectedFilter orders';

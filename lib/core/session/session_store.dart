@@ -15,11 +15,11 @@ class SessionStore extends ChangeNotifier {
   List<String> get roleNames {
     final roles = _user?['roles'];
     if (roles is List) {
-      return roles
-          .whereType<Map<String, dynamic>>()
-          .map((e) => (e['name'] as String?) ?? '')
-          .where((e) => e.isNotEmpty)
-          .toList();
+      return roles.map((r) {
+        if (r is String) return r;
+        if (r is Map<String, dynamic>) return (r['name'] as String?) ?? '';
+        return '';
+      }).where((e) => e.isNotEmpty).toList();
     }
     return const [];
   }

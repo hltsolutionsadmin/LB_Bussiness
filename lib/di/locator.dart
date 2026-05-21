@@ -1,5 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:get_it/get_it.dart';
+import 'package:local_basket_business/core/config/api_config.dart';
+import 'package:local_basket_business/core/env/env.dart';
 import 'package:local_basket_business/core/network/dio_client.dart';
 import 'package:local_basket_business/core/storage/secure_storage.dart';
 import 'package:local_basket_business/core/session/session_store.dart';
@@ -24,13 +26,23 @@ final sl = GetIt.instance;
 Future<void> setupLocator() async {
   // Core
   sl.registerLazySingleton<Dio>(() => Dio());
-  sl.registerLazySingleton<DioClient>(() => DioClient(sl()));
+  
+  // API Configuration
+  final String baseUrl = EnvConfig.baseUrl.isNotEmpty
+      ? EnvConfig.baseUrl
+      : 'https://gateway-service.purplefield-2b43f6a6.southindia.azurecontainerapps.io';
+  sl.registerLazySingleton<ApiConfig>(() => ApiConfig(
+    baseUrl: baseUrl,
+    endpoints: ApiConfig.endpointsV1,
+  ));
+  
+  sl.registerLazySingleton<DioClient>(() => DioClient(sl(), sl<ApiConfig>().baseUrl));
   sl.registerLazySingleton<AppSecureStorage>(() => AppSecureStorage());
   sl.registerLazySingleton<SessionStore>(() => SessionStore());
 
   // Data sources
   sl.registerLazySingleton<AuthRemoteDataSource>(
-    () => AuthRemoteDataSource(sl(), sl()),
+    () => AuthRemoteDataSource(sl(), sl(), sl()),
   );
   sl.registerLazySingleton<ProductRemoteDataSource>(
     () => ProductRemoteDataSource(sl(), sl()),
