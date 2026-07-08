@@ -8,12 +8,24 @@ class AuthRepositoryImpl implements AuthRepository {
   final AuthRemoteDataSource _remote;
   final AppSecureStorage _storage;
 
+  String _normalizePrimaryContact(String primaryContact) {
+    final value = primaryContact.trim();
+    final digits = value.replaceAll(RegExp(r'\D'), '');
+
+    if (digits.length == 10) return digits;
+    if (digits.length == 12 && digits.startsWith('91')) {
+      return digits.substring(2);
+    }
+
+    return value;
+  }
+
   @override
-  Future<void> triggerOtp({
-    required String primaryContact,
-  }) {
+  Future<void> triggerOtp({required String primaryContact}) {
     return _remote.triggerOtp(
-      TriggerOtpRequest(primaryContact: primaryContact),
+      TriggerOtpRequest(
+        primaryContact: _normalizePrimaryContact(primaryContact),
+      ),
     );
   }
 
@@ -22,7 +34,9 @@ class AuthRepositoryImpl implements AuthRepository {
     required String primaryContact,
   }) {
     return _remote.triggerOtpWithResponse(
-      TriggerOtpRequest(primaryContact: primaryContact),
+      TriggerOtpRequest(
+        primaryContact: _normalizePrimaryContact(primaryContact),
+      ),
     );
   }
 
@@ -36,7 +50,7 @@ class AuthRepositoryImpl implements AuthRepository {
     return _remote.login(
       LoginRequest(
         otp: otp,
-        primaryContact: primaryContact,
+        primaryContact: _normalizePrimaryContact(primaryContact),
         fullName: fullName,
         deviceId: deviceId,
       ),

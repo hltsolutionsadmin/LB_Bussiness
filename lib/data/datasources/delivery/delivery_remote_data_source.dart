@@ -9,6 +9,51 @@ class DeliveryRemoteDataSource {
   final DioClient _client;
   final AppSecureStorage _storage;
 
+  String? _extractStoreId(dynamic data) {
+    if (data is Map<String, dynamic>) {
+      final directStoreId = data['storeId']?.toString();
+      if (directStoreId != null && directStoreId.isNotEmpty) {
+        return directStoreId;
+      }
+
+      final nested = data['data'];
+      if (nested != null) {
+        final nestedId = _extractStoreId(nested);
+        if (nestedId != null && nestedId.isNotEmpty) {
+          return nestedId;
+        }
+      }
+
+      final store = data['store'];
+      if (store != null) {
+        final storeId = _extractStoreId(store);
+        if (storeId != null && storeId.isNotEmpty) {
+          return storeId;
+        }
+      }
+
+      if (data['items'] is List) {
+        for (final item in data['items'] as List) {
+          if (item is Map<String, dynamic>) {
+            final storeId = _extractStoreId(item);
+            if (storeId != null && storeId.isNotEmpty) {
+              return storeId;
+            }
+          }
+        }
+      }
+    } else if (data is List) {
+      for (final item in data) {
+        final storeId = _extractStoreId(item);
+        if (storeId != null && storeId.isNotEmpty) {
+          return storeId;
+        }
+      }
+    }
+
+    return null;
+  }
+
   Options _authOptions(String? bearer) {
     return Options(
       headers: {
@@ -172,27 +217,62 @@ class DeliveryRemoteDataSource {
     return d;
   }
 
+  Future<String?> resolveStoreId({
+    required String b2bUnitId,
+    String searchTerm = '',
+  }) async {
+    final token = await _storage.readToken();
+    if (kDebugMode) {
+      debugPrint('[API] Search Stores -> GET /api/stores/search');
+      debugPrint('Query: {searchTerm: $searchTerm, b2bUnitId: $b2bUnitId}');
+    }
+
+    final res = await _client.dio.get(
+      '/api/stores/search',
+      queryParameters: {'searchTerm': searchTerm, 'b2bUnitId': b2bUnitId},
+      options: _authOptions(token),
+    );
+
+    return _extractStoreId(res.data);
+  }
+
   Future<Map<String, dynamic>> addPartner({
     required String vehicleNumber,
     required bool available,
     required String mobileNumber,
     required String fullName,
+    String? storeId,
+    String? b2bUnitId,
+    String? displayName,
+    String? bio,
+    String vehicleType = 'Two wheeler',
+    String specializations = '',
+    String sessionMode = '',
+    int maxConcurrentAssignments = 1,
   }) async {
     final token = await _storage.readToken();
     if (kDebugMode) {
-      debugPrint('[API] Add Delivery Partner -> POST /delivery/api/partners');
+      debugPrint('[API] Add Delivery Partner -> POST /api/agents');
       debugPrint(
-        'Payload: {vehicleNumber: $vehicleNumber, available: $available, mobileNumber: $mobileNumber}',
+        'Payload: {mobileNumber: $mobileNumber, fullName: $fullName, storeId: $storeId, b2bUnitId: $b2bUnitId}',
       );
     }
+
     final res = await _client.dio.post(
-      '/delivery/api/partners',
+      '/api/agents',
       data: {
-        'vehicleNumber': vehicleNumber,
-        'available': available,
         'mobileNumber': mobileNumber,
         'fullName': fullName,
-        // 'dedicatedForOffers': false,
+        'storeId': storeId,
+        'b2bUnitId': b2bUnitId,
+        'agentType': 'DELIVERY_BOY',
+        'displayName': displayName ?? fullName,
+        'bio': bio ?? '',
+        'maxConcurrentAssignments': maxConcurrentAssignments,
+        'vehicleRegistration': vehicleNumber,
+        'vehicleType': vehicleType,
+        'specializations': specializations,
+        'sessionMode': sessionMode,
       },
       options: _authOptions(token),
     );

@@ -6,7 +6,9 @@ import 'package:local_basket_business/di/locator.dart';
 import 'package:local_basket_business/domain/repositories/auth/auth_repository.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  final bool showSessionExpired;
+
+  const LoginScreen({super.key, this.showSessionExpired = false});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -26,6 +28,11 @@ class _LoginScreenState extends State<LoginScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      if (widget.showSessionExpired) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Session expired. Please login again.')),
+        );
+      }
       _phoneFocusNode.requestFocus();
       _scrollToBottom();
     });
@@ -57,7 +64,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       final res = await sl<AuthRepository>().triggerOtpWithResponse(
-        primaryContact: '+91${_phoneController.text}',
+        primaryContact: _phoneController.text,
       );
 
       final otp = res['otp']?.toString();
@@ -71,7 +78,7 @@ class _LoginScreenState extends State<LoginScreen> {
         context,
         MaterialPageRoute(
           builder: (_) => OTPScreen(
-            phoneNumber: '+91${_phoneController.text}',
+            phoneNumber: _phoneController.text,
             debugOtp: _debugOtp,
           ),
         ),

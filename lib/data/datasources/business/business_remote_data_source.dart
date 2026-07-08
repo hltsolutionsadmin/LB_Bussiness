@@ -172,4 +172,42 @@ class BusinessRemoteDataSource {
         .map((e) => Map<String, dynamic>.from(e))
         .toList();
   }
+
+  Future<List<Map<String, dynamic>>> searchStores({
+    required String b2bUnitId,
+    String searchTerm = '',
+  }) async {
+    final token = await _storage.readToken();
+    if (kDebugMode) {
+      debugPrint('[API] Search Stores -> GET /api/stores/search');
+      debugPrint('[API] Query: searchTerm=$searchTerm, b2bUnitId=$b2bUnitId');
+    }
+    final res = await _client.dio.get(
+      '/api/stores/search',
+      queryParameters: {'searchTerm': searchTerm, 'b2bUnitId': b2bUnitId},
+      options: _authOptions(token),
+    );
+    final data = res.data;
+    List list;
+    if (data is Map<String, dynamic>) {
+      if (data['content'] is List) {
+        list = data['content'] as List;
+      } else if (data['data'] is Map<String, dynamic> &&
+          (data['data'] as Map<String, dynamic>)['content'] is List) {
+        list = (data['data'] as Map<String, dynamic>)['content'] as List;
+      } else if (data['data'] is List) {
+        list = data['data'] as List;
+      } else {
+        list = [];
+      }
+    } else if (data is List) {
+      list = data;
+    } else {
+      list = [];
+    }
+    return list
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
 }

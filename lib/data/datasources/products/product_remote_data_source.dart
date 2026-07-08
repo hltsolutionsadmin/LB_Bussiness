@@ -263,6 +263,103 @@ class ProductRemoteDataSource {
     );
   }
 
+  Future<pm.ProductPage> fetchProductsByStoreId({
+    required String storeId,
+    required int page,
+    required int size,
+  }) async {
+    final token = await _storage.readToken();
+    if (kDebugMode) {
+      debugPrint(
+        '[API] Store Products -> GET /api/products/store/$storeId?page=$page&size=$size',
+      );
+    }
+    final res = await _client.dio.get(
+      '/api/products/store/$storeId',
+      queryParameters: {'page': page, 'size': size},
+      options: _authOptions(token),
+    );
+    if (kDebugMode) {
+      debugPrint('[API] Store Products Response: ${res.statusCode}');
+      debugPrint('BODY: ${res.data}');
+    }
+
+    final data = res.data;
+    List list;
+    int totalPages = 0;
+    int number = page;
+    if (data is Map<String, dynamic>) {
+      if (data['content'] is List) {
+        list = data['content'] as List;
+        totalPages = (data['totalPages'] as int?) ?? 0;
+        number = (data['number'] as int?) ?? page;
+      } else if (data['data'] is Map<String, dynamic>) {
+        final inner = data['data'] as Map<String, dynamic>;
+        list = (inner['content'] is List) ? inner['content'] as List : const [];
+        totalPages = (inner['totalPages'] as int?) ?? 0;
+        number = (inner['number'] as int?) ?? page;
+      } else if (data['data'] is List) {
+        list = data['data'] as List;
+      } else {
+        list = [];
+      }
+    } else if (data is List) {
+      list = data;
+    } else {
+      list = [];
+    }
+
+    double parsePrice(dynamic value) {
+      if (value is num) return value.toDouble();
+      if (value is String) return double.tryParse(value) ?? 0.0;
+      if (value is Map) {
+        final map = Map<String, dynamic>.from(value);
+        return parsePrice(map['price']);
+      }
+      return 0.0;
+    }
+
+    String categoryName(dynamic value) {
+      if (value is List && value.isNotEmpty) {
+        final first = value.first;
+        if (first is Map) {
+          return first['name']?.toString() ?? '';
+        }
+      }
+      return '';
+    }
+
+    final items = list.whereType<Map>().map<Map<String, dynamic>>((raw) {
+      final m = Map<String, dynamic>.from(raw);
+      final status = m['approvalStatus']?.toString() ?? '';
+      return {
+        'id': m['id'],
+        'code': m['code']?.toString() ?? '',
+        'name': m['name']?.toString() ?? 'Item',
+        'category': categoryName(m['categories']).toLowerCase(),
+        'description': m['description']?.toString() ?? '',
+        'price': parsePrice(m['price']),
+        'available': (m['active'] ?? m['available'] ?? true) == true,
+        'featured': (m['featured'] ?? false) == true,
+        'popular': (m['popular'] ?? false) == true,
+        'approvalStatus': status,
+        'storeId': m['storeId']?.toString() ?? storeId,
+        'b2bUnitId': m['b2bUnitId']?.toString() ?? '',
+        'imageUrl': null,
+      };
+    }).toList();
+
+    final hasNext = totalPages == 0
+        ? items.length == size
+        : (number + 1) < totalPages;
+    return pm.ProductPage(
+      items: items,
+      hasNext: hasNext,
+      page: number,
+      size: size,
+    );
+  }
+
   Future<void> deleteProduct({required int id}) async {
     final token = await _storage.readToken();
     await _client.dio.delete(

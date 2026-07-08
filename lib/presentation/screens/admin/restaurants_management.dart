@@ -4,8 +4,9 @@ import 'package:local_basket_business/theme/app_colors.dart';
 import 'package:local_basket_business/widgets/glass_card.dart';
 import 'package:local_basket_business/widgets/search_bar_widget.dart';
 import 'package:get_it/get_it.dart';
+import 'package:local_basket_business/core/session/session_store.dart';
 import 'package:local_basket_business/data/datasources/business/business_remote_data_source.dart';
-import 'package:local_basket_business/presentation/screens/admin/orders_reports_screen.dart';
+import 'package:local_basket_business/domain/repositories/products/product_repository.dart';
 
 class RestaurantManagementScreen extends StatefulWidget {
   final Function(String) onNavigate;
@@ -138,52 +139,24 @@ class _RestaurantManagementScreenState
   Future<void> _loadRestaurants() async {
     setState(() => _loading = true);
     try {
+      final b2bUnitId = GetIt.I<SessionStore>().b2bUnitId;
+      if (b2bUnitId.isEmpty) {
+        throw Exception('B2B unit ID not found');
+      }
+
       final ds = GetIt.I<BusinessRemoteDataSource>();
-      final list = await ds.listBusinesses();
+      final list = await ds.searchStores(b2bUnitId: b2bUnitId);
       final mapped = list.map<_Restaurant>((raw) {
         final m = Map<String, dynamic>.from(raw);
         String str(dynamic v) => v?.toString() ?? '';
-        double toDouble(dynamic v) {
-          if (v is num) return v.toDouble();
-          return double.tryParse(str(v)) ?? 0.0;
-        }
-
-        int toInt(dynamic v) {
-          if (v is num) return v.toInt();
-          return int.tryParse(str(v)) ?? 0;
-        }
-
-        final status = str(m['status']).isNotEmpty
-            ? str(m['status'])
-            : ((m['enabled'] == true) ? 'Active' : 'Inactive');
-        final name =
-            str(
-              m['businessName'].toString().isNotEmpty
-                  ? m['businessName']
-                  : m['name'],
-            ).isNotEmpty
-            ? str(m['businessName'] ?? m['name'])
-            : 'N/A';
+        final active = (m['active'] ?? m['enabled'] ?? false) == true;
+        final status = active ? 'Active' : 'Inactive';
+        final name = str(m['name']).isNotEmpty ? str(m['name']) : 'N/A';
         return _Restaurant(
-          id: toInt(m['id']),
+          id: str(m['id']),
+          code: str(m['code']),
           name: name,
-          cuisine: str(m['categoryName'] ?? m['cuisine']).isEmpty
-              ? '—'
-              : str(m['categoryName'] ?? m['cuisine']),
           status: status,
-          rating: toDouble(m['rating']),
-          totalOrders: toInt(m['totalOrders']),
-          revenue: toDouble(m['revenue']),
-          ownerName: str(m['ownerName'] ?? m['contactPerson']).isEmpty
-              ? '—'
-              : str(m['ownerName'] ?? m['contactPerson']),
-          phone: str(m['contactNumber'] ?? m['phone']).isEmpty
-              ? '—'
-              : str(m['contactNumber'] ?? m['phone']),
-          email: str(m['email']).isEmpty ? '—' : str(m['email']),
-          address: str(m['addressLine1'] ?? m['address']).isEmpty
-              ? '—'
-              : str(m['addressLine1'] ?? m['address']),
           imageUrl: str(m['imageUrl']),
         );
       }).toList();
@@ -248,8 +221,6 @@ class _RestaurantManagementScreenState
                         itemCount: restaurants.length,
                         itemBuilder: (context, index) => _RestaurantCard(
                           data: restaurants[index],
-                          onNavigate: widget.onNavigate,
-                          onUpdated: _loadRestaurants,
                           index: index,
                         ),
                       ),
@@ -266,7 +237,9 @@ class _RestaurantManagementScreenState
     if (_searchQuery.isNotEmpty) {
       list = list
           .where(
-            (r) => r.name.toLowerCase().contains(_searchQuery.toLowerCase()),
+            (r) =>
+                r.name.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+                r.code.toLowerCase().contains(_searchQuery.toLowerCase()),
           )
           .toList();
     }
@@ -307,15 +280,8 @@ class _RestaurantManagementScreenState
 
 class _RestaurantCard extends StatelessWidget {
   final _Restaurant data;
-  final Function(String) onNavigate;
-  final VoidCallback onUpdated;
   final int index;
-  const _RestaurantCard({
-    required this.data,
-    required this.onNavigate,
-    required this.onUpdated,
-    required this.index,
-  });
+  const _RestaurantCard({required this.data, required this.index});
 
   @override
   Widget build(BuildContext context) {
@@ -370,7 +336,7 @@ class _RestaurantCard extends StatelessWidget {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          data.cuisine,
+                          data.code.isEmpty ? 'Store' : 'Code: ${data.code}',
                           style: TextStyle(
                             fontSize: 12,
                             color: AppColors.textSecondary,
@@ -379,28 +345,14 @@ class _RestaurantCard extends StatelessWidget {
                         const SizedBox(height: 4),
                         Row(
                           children: [
-                            const Icon(
-                              Icons.star,
-                              size: 14,
-                              color: AppColors.warning,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              data.rating.toStringAsFixed(1),
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: AppColors.textSecondary,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
                             Icon(
-                              Icons.shopping_bag,
+                              Icons.inventory_2_outlined,
                               size: 14,
                               color: AppColors.textMuted,
                             ),
                             const SizedBox(width: 4),
                             Text(
-                              '${data.totalOrders} orders',
+                              'Tap to view products',
                               style: TextStyle(
                                 fontSize: 12,
                                 color: AppColors.textSecondary,
@@ -420,18 +372,13 @@ class _RestaurantCard extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
                   _Stat(
-                    label: 'Revenue',
-                    value: '₹${_formatRevenue(data.revenue)}',
+                    label: 'Code',
+                    value: data.code.isEmpty ? '—' : data.code,
                   ),
                   Container(width: 1, height: 30, color: AppColors.glassBorder),
-                  _Stat(label: 'Owner', value: data.ownerName),
+                  _Stat(label: 'Status', value: data.status),
                   Container(width: 1, height: 30, color: AppColors.glassBorder),
-                  _Stat(
-                    label: 'Phone',
-                    value: (data.phone.length > 10)
-                        ? data.phone.substring(0, 10)
-                        : data.phone,
-                  ),
+                  _Stat(label: 'Store ID', value: _shortId(data.id)),
                 ],
               ),
             ],
@@ -447,15 +394,56 @@ class _RestaurantCard extends StatelessWidget {
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (context) => _DetailsSheet(data: data, onUpdated: onUpdated),
+      builder: (context) => _DetailsSheet(data: data),
     );
   }
 }
 
-class _DetailsSheet extends StatelessWidget {
+class _DetailsSheet extends StatefulWidget {
   final _Restaurant data;
-  final VoidCallback onUpdated;
-  const _DetailsSheet({required this.data, required this.onUpdated});
+
+  const _DetailsSheet({required this.data});
+
+  @override
+  State<_DetailsSheet> createState() => _DetailsSheetState();
+}
+
+class _DetailsSheetState extends State<_DetailsSheet> {
+  final List<Map<String, dynamic>> _products = [];
+  bool _loading = true;
+  String? _errorText;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProducts();
+  }
+
+  Future<void> _loadProducts() async {
+    setState(() {
+      _loading = true;
+      _errorText = null;
+    });
+
+    try {
+      final page = await GetIt.I<ProductRepository>().getProductsByStoreId(
+        storeId: widget.data.id,
+        page: 0,
+        size: 50,
+      );
+      if (!mounted) return;
+      setState(() {
+        _products
+          ..clear()
+          ..addAll(page.items);
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _errorText = 'Failed to load products');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -488,7 +476,7 @@ class _DetailsSheet extends StatelessWidget {
                       ClipRRect(
                         borderRadius: BorderRadius.circular(12),
                         child: Image.network(
-                          data.imageUrl,
+                          widget.data.imageUrl,
                           width: 80,
                           height: 80,
                           fit: BoxFit.cover,
@@ -515,7 +503,7 @@ class _DetailsSheet extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              data.name,
+                              widget.data.name,
                               style: const TextStyle(
                                 fontSize: 20,
                                 fontWeight: FontWeight.bold,
@@ -524,14 +512,16 @@ class _DetailsSheet extends StatelessWidget {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              data.cuisine,
+                              widget.data.code.isEmpty
+                                  ? 'Store'
+                                  : 'Code: ${widget.data.code}',
                               style: TextStyle(
                                 fontSize: 14,
                                 color: AppColors.textSecondary,
                               ),
                             ),
                             const SizedBox(height: 8),
-                            _StatusBadge(status: data.status),
+                            _StatusBadge(status: widget.data.status),
                           ],
                         ),
                       ),
@@ -539,110 +529,197 @@ class _DetailsSheet extends StatelessWidget {
                   ),
                   const SizedBox(height: 20),
                   _DetailRow(
-                    icon: Icons.person,
-                    label: 'Owner',
-                    value: data.ownerName,
+                    icon: Icons.badge_outlined,
+                    label: 'Store ID',
+                    value: widget.data.id,
                   ),
                   const SizedBox(height: 12),
                   _DetailRow(
-                    icon: Icons.email,
-                    label: 'Email',
-                    value: data.email,
+                    icon: Icons.qr_code_2,
+                    label: 'Store Code',
+                    value: widget.data.code.isEmpty ? '—' : widget.data.code,
                   ),
                   const SizedBox(height: 12),
                   _DetailRow(
-                    icon: Icons.phone,
-                    label: 'Phone',
-                    value: data.phone,
-                  ),
-                  const SizedBox(height: 12),
-                  _DetailRow(
-                    icon: Icons.location_on,
-                    label: 'Address',
-                    value: data.address,
+                    icon: Icons.toggle_on_outlined,
+                    label: 'Status',
+                    value: widget.data.status,
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () {
-                      final nav = Navigator.of(context, rootNavigator: true);
-                      Navigator.of(context).pop();
-                      Future.microtask(() {
-                        nav.push(
-                          MaterialPageRoute(
-                            builder: (_) => OrdersReportsScreen(
-                              initialBusinessId: data.id,
-                              autoLoad: true,
-                            ),
+            GlassCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Expanded(
+                        child: Text(
+                          'Products',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textPrimary,
                           ),
-                        );
-                      });
-                    },
-                    icon: const Icon(Icons.assessment),
-                    label: const Text('View Reports'),
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                    ),
+                        ),
+                      ),
+                      if (!_loading)
+                        Text(
+                          '${_products.length}',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      IconButton(
+                        onPressed: _loading ? null : _loadProducts,
+                        icon: const Icon(Icons.refresh),
+                        color: AppColors.orange600,
+                      ),
+                    ],
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () async {
-                      final shouldUnblock = data.status != 'Active';
-                      try {
-                        final ds = GetIt.I<BusinessRemoteDataSource>();
-                        if (shouldUnblock) {
-                          await ds.unblockBusiness(businessId: data.id);
-                        } else {
-                          await ds.blockBusiness(businessId: data.id);
-                        }
-                        if (context.mounted) {
-                          Navigator.pop(context);
-                          onUpdated();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                shouldUnblock
-                                    ? 'Restaurant unblocked'
-                                    : 'Restaurant blocked',
-                              ),
-                            ),
-                          );
-                        }
-                      } catch (e) {
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Failed to update status'),
-                            ),
-                          );
-                        }
-                      }
-                    },
-                    icon: Icon(
-                      data.status == 'Active' ? Icons.pause : Icons.play_arrow,
+                  const SizedBox(height: 12),
+                  if (_loading)
+                    const Center(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(vertical: 24),
+                        child: CircularProgressIndicator(),
+                      ),
+                    )
+                  else if (_errorText != null)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: Text(
+                        _errorText!,
+                        style: const TextStyle(color: AppColors.error),
+                      ),
+                    )
+                  else if (_products.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: Text(
+                        'No products found for this restaurant',
+                        style: TextStyle(color: AppColors.textSecondary),
+                      ),
+                    )
+                  else
+                    ..._products.map(
+                      (product) => Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: _ProductSummaryCard(product: product),
+                      ),
                     ),
-                    label: Text(
-                      data.status == 'Active' ? 'Deactivate' : 'Activate',
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: data.status == 'Active'
-                          ? AppColors.error
-                          : AppColors.success,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                    ),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _ProductSummaryCard extends StatelessWidget {
+  final Map<String, dynamic> product;
+
+  const _ProductSummaryCard({required this.product});
+
+  @override
+  Widget build(BuildContext context) {
+    final name = product['name']?.toString() ?? 'Item';
+    final code = product['code']?.toString() ?? '';
+    final price = (product['price'] is num)
+        ? (product['price'] as num).toDouble()
+        : double.tryParse(product['price']?.toString() ?? '') ?? 0.0;
+    final available = product['available'] == true;
+    final approvalStatus = product['approvalStatus']?.toString() ?? '';
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.glassBorder),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: AppColors.orange600.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(
+              Icons.restaurant_menu,
+              color: AppColors.orange600,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  code.isEmpty ? 'Product' : 'Code: $code',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                if (approvalStatus.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    approvalStatus,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: AppColors.textMuted,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                '₹${price.toStringAsFixed(2)}',
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                available ? 'Active' : 'Inactive',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: available ? AppColors.success : AppColors.error,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -708,40 +785,22 @@ class _Stat extends StatelessWidget {
 }
 
 class _Restaurant {
-  final int id;
+  final String id;
+  final String code;
   final String name;
-  final String cuisine;
   final String status;
-  final double rating;
-  final int totalOrders;
-  final double revenue;
-  final String ownerName;
-  final String phone;
-  final String email;
-  final String address;
   final String imageUrl;
 
   _Restaurant({
     required this.id,
+    required this.code,
     required this.name,
-    required this.cuisine,
     required this.status,
-    required this.rating,
-    required this.totalOrders,
-    required this.revenue,
-    required this.ownerName,
-    required this.phone,
-    required this.email,
-    required this.address,
     required this.imageUrl,
   });
 }
 
-String _formatRevenue(double revenue) {
-  if (revenue >= 100000) {
-    return '${(revenue / 100000).toStringAsFixed(1)}L';
-  } else if (revenue >= 1000) {
-    return '${(revenue / 1000).toStringAsFixed(1)}K';
-  }
-  return revenue.toStringAsFixed(0);
+String _shortId(String value) {
+  if (value.length <= 8) return value;
+  return value.substring(0, 8);
 }

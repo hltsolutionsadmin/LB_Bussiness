@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
+import 'package:local_basket_business/core/session/session_store.dart';
 import 'package:local_basket_business/data/datasources/delivery/delivery_remote_data_source.dart';
 
 class AddDeliveryPartnerScreen extends StatefulWidget {
@@ -33,11 +34,28 @@ class _AddDeliveryPartnerScreenState extends State<AddDeliveryPartnerScreen> {
     setState(() => _submitting = true);
     try {
       final ds = GetIt.I<DeliveryRemoteDataSource>();
+      final session = GetIt.I<SessionStore>();
+
+      final resolvedB2BUnitId =
+          (session.user?['b2bUnitId'] ?? session.user?['b2bUnit']?['id'] ?? '')
+              .toString();
+      final resolvedStoreId = await ds.resolveStoreId(
+        b2bUnitId: resolvedB2BUnitId.isNotEmpty
+            ? resolvedB2BUnitId
+            : '2ac4fd80-0448-40d3-8877-7cc4906bf66d',
+      );
+
       final res = await ds.addPartner(
         vehicleNumber: _vehicleController.text.trim(),
         available: _available,
         mobileNumber: _mobileController.text.trim(),
         fullName: _fullNameController.text.trim(),
+        storeId: resolvedStoreId ?? '05b3c488-929f-4dd7-a4c9-e95a8159b26f',
+        b2bUnitId: resolvedB2BUnitId.isNotEmpty
+            ? resolvedB2BUnitId
+            : '2ac4fd80-0448-40d3-8877-7cc4906bf66d',
+        displayName: _fullNameController.text.trim(),
+        bio: '',
       );
       if (!mounted) return;
       Navigator.of(context).pop(res);

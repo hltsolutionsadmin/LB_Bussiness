@@ -68,6 +68,10 @@ class AuthRemoteDataSource {
     await _storage.saveAccessToken(loginResponse.accessToken);
     await _storage.saveRefreshToken(loginResponse.refreshToken);
     await _storage.saveExpiresIn(loginResponse.expiresIn);
+    final expiresAt = DateTime.now()
+        .add(Duration(seconds: loginResponse.expiresIn))
+        .millisecondsSinceEpoch;
+    await _storage.saveTokenExpiry(expiresAt);
     await _storage.saveTokenType(loginResponse.tokenType);
     
     final masked = loginResponse.accessToken.length > 12

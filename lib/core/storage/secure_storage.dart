@@ -4,6 +4,7 @@ class AppSecureStorage {
   static const _accessTokenKey = 'access_token';
   static const _refreshTokenKey = 'refresh_token';
   static const _expiresInKey = 'expires_in';
+  static const _tokenExpiryKey = 'token_expiry';
   static const _tokenTypeKey = 'token_type';
 
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
@@ -23,6 +24,14 @@ class AppSecureStorage {
     return value != null ? int.tryParse(value) : null;
   }
 
+  Future<void> saveTokenExpiry(int expiryMs) =>
+      _storage.write(key: _tokenExpiryKey, value: expiryMs.toString());
+
+  Future<int?> readTokenExpiry() async {
+    final value = await _storage.read(key: _tokenExpiryKey);
+    return value != null ? int.tryParse(value) : null;
+  }
+
   Future<void> saveTokenType(String tokenType) =>
       _storage.write(key: _tokenTypeKey, value: tokenType);
   Future<String?> readTokenType() => _storage.read(key: _tokenTypeKey);
@@ -34,6 +43,7 @@ class AppSecureStorage {
     await _storage.delete(key: _accessTokenKey);
     await _storage.delete(key: _refreshTokenKey);
     await _storage.delete(key: _expiresInKey);
+    await _storage.delete(key: _tokenExpiryKey);
     await _storage.delete(key: _tokenTypeKey);
   }
 

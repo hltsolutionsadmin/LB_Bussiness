@@ -7,6 +7,12 @@ abstract class ProductRepository {
     required int size,
   });
 
+  Future<ProductPage> getProductsByStoreId({
+    required String storeId,
+    required int page,
+    required int size,
+  });
+
   Future<Map<String, dynamic>> createProduct({
     required String name,
     required String shortCode,

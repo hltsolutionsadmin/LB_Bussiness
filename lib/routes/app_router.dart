@@ -26,8 +26,12 @@ class AppRouteGenerator {
         );
 
       case AppRoutes.login:
+        final args = settings.arguments as Map<String, dynamic>?;
+        final showSessionExpired = args?['showSessionExpired'] as bool? ?? false;
         return MaterialPageRoute(
-          builder: (context) => Scaffold(body: LoginScreen()),
+          builder: (context) => Scaffold(
+            body: LoginScreen(showSessionExpired: showSessionExpired),
+          ),
           settings: settings,
         );
 

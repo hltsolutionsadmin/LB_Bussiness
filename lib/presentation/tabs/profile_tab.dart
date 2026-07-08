@@ -92,7 +92,7 @@ class ProfileTab extends StatelessWidget {
                       final phone = sl<SessionStore>().primaryContact;
                       final displayPhone = phone.isEmpty
                           ? '—'
-                          : (phone.startsWith('+') ? phone : '+91 $phone');
+                          : (phone.startsWith('+') ? phone : '$phone');
                       return _InfoRow(icon: Icons.phone, text: displayPhone);
                     },
                   ),
@@ -162,7 +162,7 @@ class ProfileTab extends StatelessWidget {
                       if (phoneRaw.trim().isNotEmpty) {
                         final phone = phoneRaw.startsWith('+')
                             ? phoneRaw
-                            : '+91 $phoneRaw';
+                            : '$phoneRaw';
                         items.add(MapEntry('Primary Contact', phone));
                       }
                       final gst = readString(b2b, 'gstNo');

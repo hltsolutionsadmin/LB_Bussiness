@@ -25,7 +25,10 @@ class _OTPScreenState extends State<OTPScreen> {
   // Focus nodes for the actual TextFields
   final List<FocusNode> _focusNodes = List.generate(6, (_) => FocusNode());
   // Separate focus nodes for the Focus wrappers used to intercept key events
-  final List<FocusNode> _wrapperFocusNodes = List.generate(6, (_) => FocusNode());
+  final List<FocusNode> _wrapperFocusNodes = List.generate(
+    6,
+    (_) => FocusNode(),
+  );
   final ScrollController _scrollController = ScrollController();
 
   String? _errorText;
@@ -33,6 +36,20 @@ class _OTPScreenState extends State<OTPScreen> {
   int _timer = 30;
   Timer? _countdownTimer;
   bool _isSubmitting = false;
+
+  String get _primaryContact {
+    final value = widget.phoneNumber.trim();
+    final digits = value.replaceAll(RegExp(r'\D'), '');
+
+    if (digits.length == 10) return digits;
+    if (digits.length == 12 && digits.startsWith('91')) {
+      return digits.substring(2);
+    }
+
+    return value;
+  }
+
+  String get _displayPhoneNumber => '+91 $_primaryContact';
 
   @override
   void initState() {
@@ -84,27 +101,35 @@ class _OTPScreenState extends State<OTPScreen> {
 
     try {
       final repo = sl<AuthRepository>();
+      final session = sl<SessionStore>();
       final deviceId = const Uuid().v4();
+      session.clear();
       final token = await repo.loginWithOtp(
         otp: otp,
-        primaryContact: widget.phoneNumber,
+        primaryContact: _primaryContact,
         fullName: 'User',
         deviceId: deviceId,
       );
-
+      print('[AUTH] OTP Verified. Primary contact: $_primaryContact');
       print('[AUTH] TOKEN: $token');
 
-      try {
-        final userDetailsMap = await repo.getUserDetails();
-        sl<SessionStore>().setUser(userDetailsMap);
-      } catch (_) {}
+      final userDetailsMap = await repo.getUserDetails();
+      session.setUser(userDetailsMap);
 
       if (!mounted) return;
 
-      final roles = sl<SessionStore>().roleNames;
+      final roles = session.roleNames;
       print('Roles: $roles');
 
-      if (roles.contains('ROLE_BUSINESS_ADMIN')) {
+      if (roles.contains('ROLE_BUSINESS_ADMIN') ||
+          roles.contains('ROLE_USER_ADMIN')) {
+        Navigator.of(
+          context,
+        ).pushNamedAndRemoveUntil(AppRoutes.admin, (_) => false);
+        return;
+      }
+      if (roles.contains('ROLE_STORE_ADMIN') ||
+          roles.contains('ROLE_RESTAURANT_OWNER')) {
         Navigator.of(
           context,
         ).pushNamedAndRemoveUntil(AppRoutes.dashboard, (_) => false);
@@ -130,7 +155,7 @@ class _OTPScreenState extends State<OTPScreen> {
 
     try {
       final res = await sl<AuthRepository>().triggerOtpWithResponse(
-        primaryContact: widget.phoneNumber,
+        primaryContact: _primaryContact,
       );
 
       final otp = res['otp']?.toString();
@@ -247,7 +272,7 @@ class _OTPScreenState extends State<OTPScreen> {
                                     ),
                                     const SizedBox(height: 4),
                                     Text(
-                                      '+91 ${widget.phoneNumber}',
+                                      _displayPhoneNumber,
                                       style: const TextStyle(
                                         fontSize: 16,
                                         fontWeight: FontWeight.w600,
@@ -263,8 +288,9 @@ class _OTPScreenState extends State<OTPScreen> {
                                         ),
                                         decoration: BoxDecoration(
                                           color: const Color(0xFFF3F4F6),
-                                          borderRadius:
-                                              BorderRadius.circular(12),
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
                                           border: Border.all(
                                             color: const Color(0xFFE5E7EB),
                                           ),
@@ -298,7 +324,9 @@ class _OTPScreenState extends State<OTPScreen> {
                                               // If current field is empty, move to previous
                                               // and clear it. This allows repeated backspace
                                               // presses to walk left clearing one by one.
-                                              if (_controllers[index].text.isEmpty) {
+                                              if (_controllers[index]
+                                                  .text
+                                                  .isEmpty) {
                                                 if (index > 0) {
                                                   _controllers[index - 1]
                                                       .clear();
@@ -336,13 +364,18 @@ class _OTPScreenState extends State<OTPScreen> {
                                                 ),
                                                 focusedBorder:
                                                     OutlineInputBorder(
-                                                  borderRadius:
-                                                      BorderRadius.circular(12),
-                                                  borderSide: const BorderSide(
-                                                    color: Color(0xFFF97316),
-                                                    width: 2,
-                                                  ),
-                                                ),
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            12,
+                                                          ),
+                                                      borderSide:
+                                                          const BorderSide(
+                                                            color: Color(
+                                                              0xFFF97316,
+                                                            ),
+                                                            width: 2,
+                                                          ),
+                                                    ),
                                               ),
                                               onChanged: (v) {
                                                 if (v.isNotEmpty) {
@@ -352,7 +385,9 @@ class _OTPScreenState extends State<OTPScreen> {
                                                   }
                                                 }
                                                 _scrollToBottom();
-                                                setState(() => _errorText = null);
+                                                setState(
+                                                  () => _errorText = null,
+                                                );
                                               },
                                             ),
                                           ),
