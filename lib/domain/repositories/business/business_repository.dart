@@ -4,7 +4,21 @@ abstract class BusinessRepository {
     required bool enabled,
   });
 
+  Future<Map<String, dynamic>> setStoreActive({
+    required String storeId,
+    required String name,
+    required String code,
+    required bool active,
+  });
+
   Future<void> approveBusiness({required int businessId});
+
+  Future<Map<String, dynamic>> createStoreWithLocation({
+    required String name,
+    required String code,
+    required double latitude,
+    required double longitude,
+  });
 
   Future<int?> onboardBusiness({
     required String businessName,

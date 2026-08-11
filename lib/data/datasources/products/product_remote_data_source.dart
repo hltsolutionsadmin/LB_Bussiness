@@ -91,7 +91,7 @@ class ProductRemoteDataSource {
   }
 
   Future<Map<String, dynamic>> updateProduct({
-    required int id,
+    required dynamic id,
     required String name,
     required String shortCode,
     required bool ignoreTax,
@@ -247,7 +247,8 @@ class ProductRemoteDataSource {
         'categoryId': m['categoryId'],
         'description': m['description']?.toString() ?? '',
         'price': (price ?? 0).toDouble(),
-        'available': (m['available'] ?? m['enabled'] ?? true) == true,
+        'available':
+            (m['active'] ?? m['available'] ?? m['enabled'] ?? true) == true,
         'imageUrl': imageUrl,
       };
     }).toList();
@@ -360,7 +361,7 @@ class ProductRemoteDataSource {
     );
   }
 
-  Future<void> deleteProduct({required int id}) async {
+  Future<void> deleteProduct({required dynamic id}) async {
     final token = await _storage.readToken();
     await _client.dio.delete(
       '/product/api/products/delete/$id',
@@ -376,8 +377,25 @@ class ProductRemoteDataSource {
     );
   }
 
+  Future<void> setProductActive({
+    required String productId,
+    required bool active,
+  }) async {
+    final token = await _storage.readToken();
+    final action = active ? 'activate' : 'deactivate';
+    if (kDebugMode) {
+      debugPrint(
+        '[API] Product Status -> PUT /api/products/$productId/$action',
+      );
+    }
+    await _client.dio.put(
+      '/api/products/$productId/$action',
+      options: _authOptions(token),
+    );
+  }
+
   Future<void> updateProductTimings({
-    required int id,
+    required dynamic id,
     required String startTime,
     required String endTime,
   }) async {

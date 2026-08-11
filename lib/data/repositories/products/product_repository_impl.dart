@@ -65,7 +65,7 @@ class ProductRepositoryImpl implements ProductRepository {
 
   @override
   Future<Map<String, dynamic>> updateProduct({
-    required int id,
+    required dynamic id,
     required String name,
     required String shortCode,
     required bool ignoreTax,
@@ -97,13 +97,21 @@ class ProductRepositoryImpl implements ProductRepository {
   }
 
   @override
-  Future<void> deleteProduct({required int id}) {
+  Future<void> deleteProduct({required dynamic id}) {
     return _remote.deleteProduct(id: id);
   }
 
   @override
   Future<void> toggleAvailability({required int id}) {
     return _remote.toggleAvailability(id: id);
+  }
+
+  @override
+  Future<void> setProductActive({
+    required String productId,
+    required bool active,
+  }) {
+    return _remote.setProductActive(productId: productId, active: active);
   }
 
   @override
@@ -121,7 +129,7 @@ class ProductRepositoryImpl implements ProductRepository {
 
   @override
   Future<void> updateProductTimings({
-    required int id,
+    required dynamic id,
     required String startTime,
     required String endTime,
   }) {

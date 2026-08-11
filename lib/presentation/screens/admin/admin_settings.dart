@@ -6,6 +6,7 @@ import 'package:local_basket_business/di/locator.dart';
 import 'package:local_basket_business/core/session/session_store.dart';
 import 'package:local_basket_business/routes/app_router.dart';
 import 'package:local_basket_business/core/storage/secure_storage.dart';
+import 'package:local_basket_business/presentation/screens/terms/terms_and_conditions.dart';
 
 class AdminSettingsScreen extends StatefulWidget {
   const AdminSettingsScreen({super.key});
@@ -62,11 +63,11 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                     title: 'Edit Profile',
                     onTap: () {},
                   ),
-                  _buildActionTile(
-                    icon: Icons.lock,
-                    title: 'Change Password',
-                    onTap: () {},
-                  ),
+                  // _buildActionTile(
+                  //   icon: Icons.lock,
+                  //   title: 'Change Password',
+                  //   onTap: () {},
+                  // ),
                   _buildActionTile(
                     icon: Icons.security,
                     title: 'Security Settings',
@@ -84,7 +85,13 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                   _buildActionTile(
                     icon: Icons.description,
                     title: 'Terms & Conditions',
-                    onTap: () {},
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const TermsAndConditionsScreen(),
+                        ),
+                      );
+                    },
                   ),
                   _buildActionTile(
                     icon: Icons.privacy_tip,
@@ -310,11 +317,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                 color: AppColors.orange600.withOpacity(0.2),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: const Icon(
-                Icons.settings,
-                color: AppColors.orange600,
-                size: 20,
-              ),
+              child: Icon(icon, color: AppColors.orange600, size: 20),
             ),
             const SizedBox(width: 12),
             Expanded(

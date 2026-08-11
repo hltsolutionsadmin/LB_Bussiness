@@ -265,7 +265,7 @@ Future<bool?> showProductFormSheet(
                                 );
                               } else {
                                 await repo.updateProduct(
-                                  id: existing['id'] as int,
+                                  id: existing['id'],
                                   name: nameCtrl.text.trim(),
                                   shortCode: codeCtrl.text.trim(),
                                   ignoreTax: ignoreTax,

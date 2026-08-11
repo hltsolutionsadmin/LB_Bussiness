@@ -99,20 +99,20 @@ class OrdersRemoteDataSource {
     return _extractList(res.data);
   }
 
-  Future<OrdersPage> getOrdersByBusiness({
-    required int businessId,
+  Future<OrdersPage> getOrdersByStore({
+    required String storeId,
     required int page,
     required int size,
   }) async {
     final token = await _storage.readToken();
     if (kDebugMode) {
       debugPrint(
-        '[API] List Orders -> GET /order/api/orders/business/$businessId?page=$page&size=$size',
+        '[API] List Orders -> GET /api/orders/store/$storeId?page=$page&size=$size',
       );
     }
     final res = await _client.dio.get(
-      '/order/api/orders/business/$businessId',
-      queryParameters: {'page': page, 'size': size},
+      '/api/orders/store/$storeId',
+      queryParameters: {'page': page, 'size': size, 'sort': 'createdDate,desc'},
       options: _authOptions(token),
     );
     final data = res.data;
@@ -122,21 +122,16 @@ class OrdersRemoteDataSource {
     int number = page;
 
     if (data is Map<String, dynamic>) {
-      // Handle {content: [...], totalPages, number}
       if (data['content'] is List) {
         list = data['content'] as List;
         totalPages = (data['totalPages'] as int?) ?? 0;
         number = (data['number'] as int?) ?? page;
-      }
-      // Handle wrapper { success, message, data: {...}}
-      else if (data['data'] is Map<String, dynamic>) {
+      } else if (data['data'] is Map<String, dynamic>) {
         final inner = data['data'] as Map<String, dynamic>;
         list = (inner['content'] is List) ? inner['content'] as List : const [];
         totalPages = (inner['totalPages'] as int?) ?? 0;
         number = (inner['number'] as int?) ?? page;
-      }
-      // Handle wrapper { success, message, data: [...] }
-      else if (data['data'] is List) {
+      } else if (data['data'] is List) {
         list = data['data'] as List;
       } else {
         list = [];
@@ -156,47 +151,48 @@ class OrdersRemoteDataSource {
       }
 
       String str(dynamic v) => v?.toString() ?? '';
-      // Pass-through full fields when present so UI can render complete details
+
+      final idStr = str(m['id']);
+      final shortId = idStr.length > 8 ? idStr.substring(0, 8).toUpperCase() : idStr.toUpperCase();
+
+      final lineItems = (m['lineItems'] is List)
+          ? List<Map<String, dynamic>>.from(
+              (m['lineItems'] as List).whereType<Map>().map(
+                (e) => Map<String, dynamic>.from(e),
+              ),
+            )
+          : <Map<String, dynamic>>[];
+
       return {
         'id': m['id'],
-        // Common fields
-        'orderNumber': str(m['orderNumber'] ?? m['code']),
-        'status': str(m['status'] ?? m['orderStatus']),
-        'total': toDouble(m['total'] ?? m['grandTotal'] ?? m['totalAmount']),
-        'createdAt': m['createdAt'] ?? m['orderDate'] ?? m['createdDate'],
-        'customerName': str(
-          m['customerName'] ?? m['name'] ?? m['username'] ?? m['userName'],
-        ),
-        'itemsCount':
-            m['itemsCount'] ??
-            (m['items'] is List ? (m['items'] as List).length : 0),
+        'orderNumber': shortId,
+        'status': str(m['status']),
+        'total': toDouble(m['totalPrice'] ?? m['subTotal']),
+        'createdAt': m['createdDate'],
+        'customerName': str(m['userId']),
+        'itemsCount': lineItems.length,
 
-        // Fields used by UI directly
-        'orderStatus': str(m['orderStatus'] ?? m['status']),
-        'username': str(
-          m['username'] ?? m['userName'] ?? m['customerName'] ?? m['name'],
-        ),
-        'createdDate': m['createdDate'] ?? m['createdAt'] ?? m['orderDate'],
-        'updatedDate': m['updatedDate'] ?? m['updatedAt'],
-        'totalAmount': toDouble(
-          m['totalAmount'] ?? m['total'] ?? m['grandTotal'],
-        ),
+        'orderStatus': str(m['status']),
+        'username': str(m['userId']),
+        'createdDate': m['createdDate'],
+        'updatedDate': m['updatedDate'],
+        'totalAmount': toDouble(m['totalPrice'] ?? m['subTotal']),
 
-        // Additional fields from API response
         'mobileNumber': str(m['mobileNumber']),
         'notes': str(m['notes']),
         'paymentStatus': str(m['paymentStatus']),
-        'deliveryStatus': str(m['deliveryStatus']),
-        'totalTaxAmount': toDouble(m['totalTaxAmount']),
+        'deliveryStatus': str(m['fulfillmentStatus'] ?? m['status']),
+        'totalTaxAmount': toDouble(m['totalTax']),
         'taxInclusive': m['taxInclusive'] == true,
         'selfOrder': m['selfOrder'] == true,
+        'orderType': str(m['orderType']),
+        'subTotal': toDouble(m['subTotal']),
+        'totalDiscount': toDouble(m['totalDiscount']),
 
-        // Delivery partner info
         'deliveryPartnerId': str(m['deliveryPartnerId']),
         'deliveryPartnerName': str(m['deliveryPartnerName']),
         'deliveryPartnerMobileNumber': str(m['deliveryPartnerMobileNumber']),
 
-        // Addresses (pass-through maps if present)
         'userAddress': (m['userAddress'] is Map)
             ? Map<String, dynamic>.from(m['userAddress'] as Map)
             : null,
@@ -204,14 +200,21 @@ class OrdersRemoteDataSource {
             ? Map<String, dynamic>.from(m['businessAddress'] as Map)
             : null,
 
-        // Order items (list of maps)
-        'orderItems': (m['orderItems'] is List)
-            ? List<Map<String, dynamic>>.from(
-                (m['orderItems'] as List).whereType<Map>().map(
-                  (e) => Map<String, dynamic>.from(e),
-                ),
-              )
-            : null,
+        'orderItems': lineItems.map<Map<String, dynamic>>((item) {
+          return {
+            'productName': item['productName'],
+            'productCode': item['productCode'],
+            'quantity': item['quantity'],
+            'unitPrice': toDouble(item['unitPrice']),
+            'totalPrice': toDouble(item['totalPrice']),
+            'discountPrice': toDouble(item['discountPrice']),
+            'taxAmount': toDouble(item['taxAmount']),
+            'status': item['status'],
+            'fulfillmentStatus': item['fulfillmentStatus'],
+            'price': toDouble(item['unitPrice']),
+            'totalAmount': toDouble(item['totalPrice']),
+          };
+        }).toList(),
       };
     }).toList();
 
@@ -246,34 +249,19 @@ class OrdersRemoteDataSource {
   }
 
   Future<void> updateOrderStatus({
-    required String orderNumber,
+    required String orderId,
     required String status,
-    String? notes,
   }) async {
     final token = await _storage.readToken();
     if (kDebugMode) {
       debugPrint(
-        '[API] Update Order Status -> POST /order/api/orders/status/$orderNumber status=$status notes=${notes ?? ''}',
+        '[API] Update Order Status -> PUT /api/orders/$orderId/status?status=$status',
       );
     }
-    final payload = <String, dynamic>{
-      'status': status,
-      'updatedBy': '',
-      if (notes != null) 'notes': notes,
-    };
-    if (kDebugMode) {
-      debugPrint('[API] Update Order Status Payload: $payload');
-    }
-    await _client.dio.post(
-      '/order/api/orders/status/$orderNumber',
-      data: payload,
-      options: Options(
-        headers: {
-          if (token != null && token.isNotEmpty)
-            'Authorization': 'Bearer $token',
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-      ),
+    await _client.dio.put(
+      '/api/orders/$orderId/status',
+      queryParameters: {'status': status},
+      options: _authOptions(token),
     );
   }
 

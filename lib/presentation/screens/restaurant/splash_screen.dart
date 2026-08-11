@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:local_basket_business/routes/app_router.dart';
 import 'package:local_basket_business/di/locator.dart';
+import 'package:local_basket_business/data/datasources/business/business_remote_data_source.dart';
 import 'package:local_basket_business/domain/repositories/auth/auth_repository.dart';
 import 'package:local_basket_business/core/session/session_store.dart';
 import 'package:local_basket_business/core/storage/secure_storage.dart';
@@ -38,6 +39,22 @@ class _SplashScreenState extends State<SplashScreen>
     return DateTime.now().millisecondsSinceEpoch >= expiryMs;
   }
 
+  Future<Map<String, dynamic>> _withStoreDetails(
+    Map<String, dynamic> user,
+  ) async {
+    final storeId = user['storeId']?.toString() ?? '';
+    if (storeId.isEmpty || user['store'] is Map<String, dynamic>) return user;
+
+    try {
+      final store = await sl<BusinessRemoteDataSource>().getStoreDetails(
+        storeId: storeId,
+      );
+      return {...user, 'store': store};
+    } catch (_) {
+      return user;
+    }
+  }
+
   Future<void> _goNext() async {
     await Future.delayed(const Duration(milliseconds: 1200));
     if (!mounted) return;
@@ -64,7 +81,7 @@ class _SplashScreenState extends State<SplashScreen>
         print('[AUTH][SPLASH] TOKEN: $masked');
 
         try {
-          final details = await repo.getUserDetails();
+          final details = await _withStoreDetails(await repo.getUserDetails());
           sl<SessionStore>().setUser(details);
         } catch (_) {
           await sl<AppSecureStorage>().clearToken();

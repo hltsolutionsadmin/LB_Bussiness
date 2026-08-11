@@ -35,18 +35,15 @@ class OrdersPoller {
   Future<void> _tick() async {
     if (_isTickInFlight) return;
     _isTickInFlight = true;
-    final user = _sessionStore.user;
-    final businessId = (user != null && user['b2bUnit'] is Map<String, dynamic>)
-        ? (user['b2bUnit']['id'] as int?)
-        : null;
-    if (businessId == null) {
+    final storeId = _sessionStore.storeId;
+    if (storeId.isEmpty || !_sessionStore.isStoreVendor) {
       _isTickInFlight = false;
       return;
     }
 
     try {
-      final page = await _repo.getOrdersByBusiness(
-        businessId: businessId,
+      final page = await _repo.getOrdersByStore(
+        storeId: storeId,
         page: 0,
         size: 50,
       );
@@ -54,7 +51,7 @@ class OrdersPoller {
       final currentIds = page.items.map((e) => e['id'].toString()).toSet();
       bool isNewStage(Map<String, dynamic> o) {
         final s = (o['orderStatus']?.toString() ?? '').toLowerCase();
-        return s.contains('new') || s.contains('place') || s.contains('accept');
+        return s.contains('created') || s.contains('new') || s.contains('place') || s.contains('pending');
       }
 
       if (!_isInitial) {
@@ -79,9 +76,8 @@ class OrdersPoller {
                   onAccept: () async {
                     await _stopSound();
                     await _repo.updateOrderStatus(
-                      orderNumber: order['orderNumber']?.toString() ?? '',
-                      status: 'PREPARING',
-                      notes: '0',
+                      orderId: order['id']?.toString() ?? '',
+                      status: 'CONFIRMED',
                     );
                     navigatorKey.currentState?.pop();
                     _showingDialog = false;
@@ -89,9 +85,8 @@ class OrdersPoller {
                   onReject: () async {
                     await _stopSound();
                     await _repo.updateOrderStatus(
-                      orderNumber: order['orderNumber']?.toString() ?? '',
+                      orderId: order['id']?.toString() ?? '',
                       status: 'REJECTED',
-                      notes: '0',
                     );
                     navigatorKey.currentState?.pop();
                     _showingDialog = false;

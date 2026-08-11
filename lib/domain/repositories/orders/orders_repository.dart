@@ -1,8 +1,8 @@
 import 'package:local_basket_business/data/models/orders/orders_models.dart';
 
 abstract class OrdersRepository {
-  Future<OrdersPage> getOrdersByBusiness({
-    required int businessId,
+  Future<OrdersPage> getOrdersByStore({
+    required String storeId,
     required int page,
     required int size,
   });
@@ -10,8 +10,7 @@ abstract class OrdersRepository {
   Future<Map<String, dynamic>> getBusinessKpi({required int businessId});
 
   Future<void> updateOrderStatus({
-    required String orderNumber,
+    required String orderId,
     required String status,
-    String? notes,
   });
 }

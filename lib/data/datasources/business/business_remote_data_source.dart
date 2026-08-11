@@ -143,6 +143,134 @@ class BusinessRemoteDataSource {
     );
   }
 
+  Future<Map<String, dynamic>> createStore({
+    required String name,
+    required String code,
+  }) async {
+    final token = await _storage.readToken();
+    final payload = {
+      'b2bUnitType': 'FOOD_DELIVERY',
+      'code': code,
+      'enableStockCheck': false,
+      'name': name,
+      'storeRole': 'MANAGED_PARTNER',
+      'storeType': 'B2C',
+    };
+    if (kDebugMode) {
+      debugPrint('[API] Create Store -> POST /api/stores');
+      debugPrint('[API] Payload: $payload');
+    }
+
+    final res = await _client.dio.post(
+      '/api/stores',
+      data: payload,
+      options: _authOptions(token),
+    );
+    return (res.data as Map).cast<String, dynamic>();
+  }
+
+  Future<Map<String, dynamic>> getStoreDetails({
+    required String storeId,
+  }) async {
+    final token = await _storage.readToken();
+    if (kDebugMode) {
+      debugPrint('[API] Store Details -> GET /api/stores/$storeId');
+    }
+
+    final res = await _client.dio.get(
+      '/api/stores/$storeId',
+      options: _authOptions(token),
+    );
+    final data = res.data;
+    if (data is Map<String, dynamic>) {
+      final nested = data['data'];
+      if (nested is Map<String, dynamic>) return nested;
+      return data;
+    }
+    return {'data': data};
+  }
+
+  Future<Map<String, dynamic>> updateStoreLocation({
+    required String storeId,
+    required String name,
+    required String code,
+    required double latitude,
+    required double longitude,
+  }) async {
+    final token = await _storage.readToken();
+    final payload = {
+      'code': code,
+      'latitude': latitude,
+      'longitude': longitude,
+      'name': name,
+    };
+    if (kDebugMode) {
+      debugPrint('[API] Update Store Location -> PUT /api/stores/$storeId');
+      debugPrint('[API] Payload: $payload');
+    }
+
+    final res = await _client.dio.put(
+      '/api/stores/$storeId',
+      data: payload,
+      options: _authOptions(token),
+    );
+    return (res.data as Map).cast<String, dynamic>();
+  }
+
+  Future<Map<String, dynamic>> setStoreActive({
+    required String storeId,
+    required String name,
+    required String code,
+    required bool active,
+  }) async {
+    final token = await _storage.readToken();
+    final payload = {'code': code, 'name': name, 'active': active};
+    if (kDebugMode) {
+      debugPrint('[API] Store Status -> PUT /api/stores/$storeId');
+      debugPrint('[API] Payload: $payload');
+    }
+
+    final res = await _client.dio.put(
+      '/api/stores/$storeId',
+      data: payload,
+      options: _authOptions(token),
+    );
+    return (res.data as Map).cast<String, dynamic>();
+  }
+
+  Future<Map<String, dynamic>> createStoreWithLocation({
+    required String name,
+    required String code,
+    required double latitude,
+    required double longitude,
+  }) async {
+    final created = await createStore(name: name, code: code);
+    final storeId = created['id']?.toString() ?? '';
+    if (storeId.isEmpty) {
+      throw StateError('Store created without an id');
+    }
+
+    return updateStoreLocation(
+      storeId: storeId,
+      name: name,
+      code: code,
+      latitude: latitude,
+      longitude: longitude,
+    );
+  }
+
+  Future<void> deleteStore({required String storeId}) async {
+    final token = await _storage.readToken();
+    if (kDebugMode) {
+      debugPrint('[API] Delete Store -> DELETE /api/stores/$storeId');
+    }
+
+    await _client.dio.delete(
+      '/api/stores/$storeId',
+      options: _authOptions(token),
+    );
+  }
+
   Future<List<Map<String, dynamic>>> listBusinesses() async {
     final token = await _storage.readToken();
     if (kDebugMode) {

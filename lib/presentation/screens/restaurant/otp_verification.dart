@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:uuid/uuid.dart';
 import 'package:local_basket_business/routes/app_router.dart';
 import 'package:local_basket_business/di/locator.dart';
+import 'package:local_basket_business/data/datasources/business/business_remote_data_source.dart';
 import 'package:local_basket_business/domain/repositories/auth/auth_repository.dart';
 import 'package:local_basket_business/core/session/session_store.dart';
 
@@ -50,6 +51,22 @@ class _OTPScreenState extends State<OTPScreen> {
   }
 
   String get _displayPhoneNumber => '+91 $_primaryContact';
+
+  Future<Map<String, dynamic>> _withStoreDetails(
+    Map<String, dynamic> user,
+  ) async {
+    final storeId = user['storeId']?.toString() ?? '';
+    if (storeId.isEmpty || user['store'] is Map<String, dynamic>) return user;
+
+    try {
+      final store = await sl<BusinessRemoteDataSource>().getStoreDetails(
+        storeId: storeId,
+      );
+      return {...user, 'store': store};
+    } catch (_) {
+      return user;
+    }
+  }
 
   @override
   void initState() {
@@ -113,7 +130,9 @@ class _OTPScreenState extends State<OTPScreen> {
       print('[AUTH] OTP Verified. Primary contact: $_primaryContact');
       print('[AUTH] TOKEN: $token');
 
-      final userDetailsMap = await repo.getUserDetails();
+      final userDetailsMap = await _withStoreDetails(
+        await repo.getUserDetails(),
+      );
       session.setUser(userDetailsMap);
 
       if (!mounted) return;
@@ -121,15 +140,13 @@ class _OTPScreenState extends State<OTPScreen> {
       final roles = session.roleNames;
       print('Roles: $roles');
 
-      if (roles.contains('ROLE_BUSINESS_ADMIN') ||
-          roles.contains('ROLE_USER_ADMIN')) {
+      if (roles.contains('ROLE_BUSINESS_ADMIN')) {
         Navigator.of(
           context,
         ).pushNamedAndRemoveUntil(AppRoutes.admin, (_) => false);
         return;
       }
-      if (roles.contains('ROLE_STORE_ADMIN') ||
-          roles.contains('ROLE_RESTAURANT_OWNER')) {
+      if (roles.contains('ROLE_STORE_ADMIN')) {
         Navigator.of(
           context,
         ).pushNamedAndRemoveUntil(AppRoutes.dashboard, (_) => false);

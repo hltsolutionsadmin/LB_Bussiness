@@ -29,9 +29,10 @@ class OrderDetailsDialog extends StatelessWidget {
 
   bool _isNewOrderStatus(String status) {
     final s = status.toLowerCase();
-    return s.contains('new') ||
+    return s.contains('created') ||
+        s.contains('new') ||
         s.contains('place') ||
-        (s.contains('pending') && !s.contains('accept'));
+        s.contains('pending');
   }
 
   @override
@@ -185,14 +186,33 @@ class OrderDetailsDialog extends StatelessWidget {
 
               // Pricing Details
               _buildDetailSection('Pricing Details', [
+                if (order['subTotal'] != null &&
+                    (order['subTotal'] as num) > 0)
+                  _buildDetailRow(
+                    'Sub Total',
+                    '₹${order['subTotal'] ?? 0}',
+                  ),
+                if (order['totalDiscount'] != null &&
+                    (order['totalDiscount'] as num) > 0)
+                  _buildDetailRow(
+                    'Discount',
+                    '-₹${order['totalDiscount'] ?? 0}',
+                  ),
                 _buildDetailRow(
                   'Total Tax',
                   '₹${order['totalTaxAmount'] ?? 0}',
                 ),
-                _buildDetailRow(
-                  'Tax Inclusive',
-                  order['taxInclusive'] == true ? 'Yes' : 'No',
-                ),
+                if (order['taxInclusive'] == true)
+                  _buildDetailRow(
+                    'Tax Inclusive',
+                    'Yes',
+                  ),
+                if (order['orderType'] != null &&
+                    order['orderType'].toString().isNotEmpty)
+                  _buildDetailRow(
+                    'Order Type',
+                    _label(order['orderType']?.toString() ?? ''),
+                  ),
                 const Divider(height: 24),
                 _buildDetailRow(
                   'Total Amount',

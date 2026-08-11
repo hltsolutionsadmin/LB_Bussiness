@@ -25,6 +25,7 @@ class _MenuTabState extends State<MenuTab> {
   int _searchToken = 0;
 
   final List<Map<String, dynamic>> _items = [];
+  final Set<String> _updatingProductIds = {};
   bool _isLoading = false;
   bool _hasNext = true;
   int _page = 0;
@@ -53,10 +54,8 @@ class _MenuTabState extends State<MenuTab> {
     final result = await showProductFormSheet(context, existing: existing);
     if (result == true) {
       if (existing != null) {
-        // For editing, update the item in place and stay on current position
-        await _updateSingleItem(existing['id'] as int);
+        await _updateSingleItem(existing['id']);
       } else {
-        // For new items, refresh to show at top
         await _loadPage(refresh: true);
       }
     }
@@ -66,7 +65,10 @@ class _MenuTabState extends State<MenuTab> {
     if (token != _searchToken) return;
     // Only load next 2 pages for search to avoid performance issues
     int pagesToLoad = 2;
-    while (mounted && _hasNext && _searchQuery.trim().isNotEmpty && pagesToLoad > 0) {
+    while (mounted &&
+        _hasNext &&
+        _searchQuery.trim().isNotEmpty &&
+        pagesToLoad > 0) {
       if (token != _searchToken) return;
       await _loadPage();
       if (token != _searchToken) return;
@@ -74,29 +76,28 @@ class _MenuTabState extends State<MenuTab> {
     }
   }
 
-  Future<void> _updateSingleItem(int itemId) async {
-    final user = sl<SessionStore>().user;
-    final businessId = (user != null && user['b2bUnit'] is Map<String, dynamic>)
-        ? (user['b2bUnit']['id'] as int?)
-        : null;
-    if (businessId == null) return;
-    
+  Future<void> _updateSingleItem(dynamic itemId) async {
+    final storeId = sl<SessionStore>().storeId;
+    if (storeId.isEmpty) return;
+
     try {
       final repo = sl<ProductRepository>();
       Map<String, dynamic>? updatedItem;
-            for (int page = 0; page < _page; page++) {
-        final pageData = await repo.getProducts(
-          restaurantId: businessId,
+      for (int page = 0; page < _page; page++) {
+        final pageData = await repo.getProductsByStoreId(
+          storeId: storeId,
           page: page,
           size: _size,
         );
-        final itemIndex = pageData.items.indexWhere((item) => item['id'] == itemId);
+        final itemIndex = pageData.items.indexWhere(
+          (item) => item['id']?.toString() == itemId.toString(),
+        );
         if (itemIndex != -1) {
           updatedItem = pageData.items[itemIndex];
           break;
         }
       }
-      
+
       if (updatedItem != null && mounted) {
         setState(() {
           // Update the item in the list
@@ -105,32 +106,29 @@ class _MenuTabState extends State<MenuTab> {
             _items[itemIndex] = updatedItem!;
           }
         });
-        
+
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Product updated successfully')),
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to update product: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to update product: $e')));
       }
     }
   }
 
   Future<void> _loadPage({bool refresh = false}) async {
     if (_isLoading) return;
-    final user = sl<SessionStore>().user;
-    final businessId = (user != null && user['b2bUnit'] is Map<String, dynamic>)
-        ? (user['b2bUnit']['id'] as int?)
-        : null;
-    if (businessId == null) {
+    final storeId = sl<SessionStore>().storeId;
+    if (storeId.isEmpty) {
       if (mounted) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Business ID not found')),
+            const SnackBar(content: Text('Store ID not found')),
           );
         });
       }
@@ -145,8 +143,8 @@ class _MenuTabState extends State<MenuTab> {
       }
       if (!_hasNext) return;
       final repo = sl<ProductRepository>();
-      final pageData = await repo.getProducts(
-        restaurantId: businessId,
+      final pageData = await repo.getProductsByStoreId(
+        storeId: storeId,
         page: _page,
         size: _size,
       );
@@ -166,6 +164,66 @@ class _MenuTabState extends State<MenuTab> {
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  String _productId(Map<String, dynamic> item) => item['id']?.toString() ?? '';
+
+  Future<void> _setProductActive(Map<String, dynamic> item, bool active) async {
+    final productId = _productId(item);
+    if (productId.isEmpty || _updatingProductIds.contains(productId)) {
+      return;
+    }
+
+    final old = item['available'] == true;
+    if (old == active) return;
+
+    if (!active) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dCtx) => AlertDialog(
+          title: const Text('Inactive product?'),
+          content: const Text('Are you sure you want to inactive the product?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dCtx, false),
+              child: const Text('No'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: Colors.red),
+              onPressed: () => Navigator.pop(dCtx, true),
+              child: const Text('Yes'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+    }
+
+    setState(() {
+      item['available'] = active;
+      _updatingProductIds.add(productId);
+    });
+
+    try {
+      final repo = sl<ProductRepository>();
+      await repo.setProductActive(productId: productId, active: active);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(active ? 'Product activated' : 'Product inactivated'),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => item['available'] = old);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to update product: $e')));
+    } finally {
+      if (mounted) {
+        setState(() => _updatingProductIds.remove(productId));
+      }
     }
   }
 
@@ -198,7 +256,8 @@ class _MenuTabState extends State<MenuTab> {
         _searchQuery.toLowerCase(),
       );
       final matchesCategory =
-          _selectedCategory == 'all' || item['categoryName'] == _selectedCategory;
+          _selectedCategory == 'all' ||
+          item['categoryName'] == _selectedCategory;
       return matchesSearch && matchesCategory;
     }).toList();
 
@@ -229,7 +288,9 @@ class _MenuTabState extends State<MenuTab> {
             selected: _selectedCategory,
             onSelected: (c) {
               setState(() => _selectedCategory = c);
-              debugPrint('CategoryFilter - Selected category: $c--> $_selectedCategory');
+              debugPrint(
+                'CategoryFilter - Selected category: $c--> $_selectedCategory',
+              );
               setState(() => _selectedCategory = c);
             },
           ),
@@ -268,33 +329,13 @@ class _MenuTabState extends State<MenuTab> {
                         final item = filteredItems[index];
                         return MenuItemCard(
                           item: item,
+                          isUpdating: _updatingProductIds.contains(
+                            _productId(item),
+                          ),
                           onEdit: () => _openProductForm(existing: item),
                           onToggle: () async {
                             final current = item['available'] == true;
-                            try {
-                              final repo = sl<ProductRepository>();
-                              await repo.toggleAvailability(
-                                id: (item['id'] as int),
-                              );
-                              if (!mounted) return;
-                              setState(() {
-                                item['available'] = !current;
-                              });
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    !current
-                                        ? 'Marked available'
-                                        : 'Marked unavailable',
-                                  ),
-                                ),
-                              );
-                            } catch (e) {
-                              if (!mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('Failed to toggle: $e')),
-                              );
-                            }
+                            await _setProductActive(item, !current);
                           },
                           onTimings: () async {
                             final startCtrl = TextEditingController();
@@ -495,7 +536,7 @@ class _MenuTabState extends State<MenuTab> {
                                               final repo =
                                                   sl<ProductRepository>();
                                               await repo.updateProductTimings(
-                                                id: (item['id'] as int),
+                                                id: item['id'],
                                                 startTime: start,
                                                 endTime: end,
                                               );
@@ -562,7 +603,7 @@ class _MenuTabState extends State<MenuTab> {
                               try {
                                 final repo = sl<ProductRepository>();
                                 await repo.deleteProduct(
-                                  id: (item['id'] as int),
+                                  id: item['id'],
                                 );
                                 if (!mounted) return;
                                 await _loadPage(refresh: true);
@@ -581,34 +622,7 @@ class _MenuTabState extends State<MenuTab> {
                             }
                           },
                           onSwitchToggle: (value) async {
-                            final old = item['available'] == true;
-                            setState(() {
-                              item['available'] = value;
-                            });
-                            try {
-                              final repo = sl<ProductRepository>();
-                              await repo.toggleAvailability(
-                                id: (item['id'] as int),
-                              );
-                              if (!mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    value
-                                        ? 'Marked available'
-                                        : 'Marked unavailable',
-                                  ),
-                                ),
-                              );
-                            } catch (e) {
-                              if (!mounted) return;
-                              setState(() {
-                                item['available'] = old;
-                              });
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('Failed to toggle: $e')),
-                              );
-                            }
+                            await _setProductActive(item, value);
                           },
                         );
                       },

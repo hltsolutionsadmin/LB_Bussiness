@@ -6,9 +6,97 @@ import 'package:local_basket_business/di/locator.dart';
 import 'package:local_basket_business/domain/repositories/products/product_repository.dart';
 import 'package:local_basket_business/presentation/screens/terms/terms_and_conditions.dart';
 import 'package:local_basket_business/core/storage/secure_storage.dart';
+import 'package:local_basket_business/domain/repositories/business/business_repository.dart';
 
-class ProfileTab extends StatelessWidget {
+class ProfileTab extends StatefulWidget {
   const ProfileTab({super.key});
+
+  @override
+  State<ProfileTab> createState() => _ProfileTabState();
+}
+
+class _ProfileTabState extends State<ProfileTab> {
+  bool _updatingStore = false;
+
+  bool _isStoreActive() {
+    final user = sl<SessionStore>().user;
+    final store = (user?['store'] is Map<String, dynamic>)
+        ? user!['store'] as Map<String, dynamic>
+        : const <String, dynamic>{};
+    final active = store['active'];
+    if (active is bool) return active;
+    return true;
+  }
+
+  Future<void> _setStoreActive(bool active) async {
+    if (_updatingStore) return;
+
+    if (!active) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Inactive store?'),
+          content: const Text('Are you sure you want to inactive the store?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('No'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: Colors.red),
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Yes'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+    }
+
+    final session = sl<SessionStore>();
+    final user = session.user ?? const <String, dynamic>{};
+    final store = (user['store'] is Map<String, dynamic>)
+        ? user['store'] as Map<String, dynamic>
+        : const <String, dynamic>{};
+    final storeId = (user['storeId']?.toString().isNotEmpty ?? false)
+        ? user['storeId'].toString()
+        : store['id']?.toString() ?? '';
+    final name = store['name']?.toString() ?? session.businessName;
+    final code = store['code']?.toString() ?? '';
+
+    if (storeId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Store ID not found')),
+      );
+      return;
+    }
+
+    setState(() => _updatingStore = true);
+    try {
+      await sl<BusinessRepository>().setStoreActive(
+        storeId: storeId,
+        name: name,
+        code: code,
+        active: active,
+      );
+      final updatedStore = Map<String, dynamic>.from(store);
+      updatedStore['active'] = active;
+      final updatedUser = Map<String, dynamic>.from(user);
+      updatedUser['store'] = updatedStore;
+      session.setUser(updatedUser);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(active ? 'Store activated' : 'Store inactivated')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to update store status')),
+      );
+    } finally {
+      if (mounted) setState(() => _updatingStore = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -59,6 +147,7 @@ class ProfileTab extends StatelessWidget {
                           builder: (context, _) {
                             final session = sl<SessionStore>();
                             final name = session.businessName;
+                            final userName = session.userDisplayName;
                             return Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -78,6 +167,19 @@ class ProfileTab extends StatelessWidget {
                                     color: Color(0xFFFED7AA),
                                   ),
                                 ),
+                                if (userName.isNotEmpty) ...[
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    userName,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
                               ],
                             );
                           },
@@ -92,7 +194,7 @@ class ProfileTab extends StatelessWidget {
                       final phone = sl<SessionStore>().primaryContact;
                       final displayPhone = phone.isEmpty
                           ? '—'
-                          : (phone.startsWith('+') ? phone : '$phone');
+                          : (phone.startsWith('+') ? phone : phone);
                       return _InfoRow(icon: Icons.phone, text: displayPhone);
                     },
                   ),
@@ -145,6 +247,9 @@ class ProfileTab extends StatelessWidget {
                       final b2b = (user['b2bUnit'] is Map<String, dynamic>)
                           ? user['b2bUnit'] as Map<String, dynamic>
                           : const <String, dynamic>{};
+                      final store = (user['store'] is Map<String, dynamic>)
+                          ? user['store'] as Map<String, dynamic>
+                          : const <String, dynamic>{};
 
                       String readString(Map<String, dynamic> m, String key) {
                         final v = m[key];
@@ -154,21 +259,76 @@ class ProfileTab extends StatelessWidget {
                       }
 
                       final items = <MapEntry<String, String>>[];
+                      final storeName = readString(store, 'name');
                       final businessName = session.businessName;
-                      if (businessName.trim().isNotEmpty) {
+                      if (storeName.trim().isNotEmpty) {
+                        items.add(MapEntry('Store Name', storeName));
+                      } else if (businessName.trim().isNotEmpty) {
                         items.add(MapEntry('Business Name', businessName));
+                      }
+                      final storeCode = readString(store, 'code');
+                      if (storeCode.isNotEmpty) {
+                        items.add(MapEntry('Store Code', storeCode));
+                      }
+                      final storeId = readString(user, 'storeId').isNotEmpty
+                          ? readString(user, 'storeId')
+                          : readString(store, 'id');
+                      if (storeId.isNotEmpty) {
+                        items.add(MapEntry('Store ID', storeId));
+                      }
+                      final userName = session.userDisplayName;
+                      if (userName.trim().isNotEmpty) {
+                        items.add(MapEntry('User Name', userName));
                       }
                       final phoneRaw = session.primaryContact;
                       if (phoneRaw.trim().isNotEmpty) {
-                        final phone = phoneRaw.startsWith('+')
-                            ? phoneRaw
-                            : '$phoneRaw';
-                        items.add(MapEntry('Primary Contact', phone));
+                        items.add(MapEntry('Login Number', phoneRaw));
+                      }
+                      final email = readString(user, 'email');
+                      if (email.isNotEmpty) items.add(MapEntry('Email', email));
+                      final username = readString(user, 'username');
+                      if (username.isNotEmpty && username != email) {
+                        items.add(MapEntry('Username', username));
+                      }
+                      final storeType = readString(store, 'storeType');
+                      if (storeType.isNotEmpty) {
+                        items.add(MapEntry('Store Type', storeType));
+                      }
+                      final storeRole = readString(store, 'storeRole');
+                      if (storeRole.isNotEmpty) {
+                        items.add(MapEntry('Store Role', storeRole));
+                      }
+                      final active = store['active'];
+                      if (active is bool) {
+                        items.add(
+                          MapEntry(
+                            'Store Status',
+                            active ? 'Active' : 'Inactive',
+                          ),
+                        );
+                      }
+                      final approvalStatus = readString(
+                        store,
+                        'approvalStatus',
+                      );
+                      if (approvalStatus.isNotEmpty) {
+                        items.add(MapEntry('Approval Status', approvalStatus));
+                      }
+                      final b2bUnitId = readString(user, 'b2bUnitId').isNotEmpty
+                          ? readString(user, 'b2bUnitId')
+                          : readString(store, 'b2bUnitId');
+                      if (b2bUnitId.isNotEmpty) {
+                        items.add(MapEntry('B2B Unit ID', b2bUnitId));
+                      }
+                      final latitude = readString(store, 'latitude');
+                      final longitude = readString(store, 'longitude');
+                      if (latitude.isNotEmpty && longitude.isNotEmpty) {
+                        items.add(
+                          MapEntry('Location', '$latitude, $longitude'),
+                        );
                       }
                       final gst = readString(b2b, 'gstNo');
                       if (gst.isNotEmpty) items.add(MapEntry('GST No', gst));
-                      final email = readString(user, 'email');
-                      if (email.isNotEmpty) items.add(MapEntry('Email', email));
                       final addr1 = readString(b2b, 'addressLine1');
                       if (addr1.isNotEmpty) {
                         items.add(MapEntry('Address Line 1', addr1));
@@ -355,6 +515,36 @@ class ProfileTab extends StatelessWidget {
                               ),
                             ),
                           );
+                        },
+                      );
+                    },
+                  ),
+                  const Divider(height: 1),
+                  AnimatedBuilder(
+                    animation: sl<SessionStore>(),
+                    builder: (context, _) {
+                      return _MenuItem(
+                        icon: Icons.power_settings_new,
+                        iconColor: Colors.green,
+                        label: 'Store Status',
+                        description: 'Turn store active or inactive',
+                        trailing: _updatingStore
+                            ? const SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : Switch(
+                                value: _isStoreActive(),
+                                activeThumbColor: const Color(0xFF10B981),
+                                onChanged: _setStoreActive,
+                              ),
+                        onTap: () {
+                          if (!_updatingStore) {
+                            _setStoreActive(!_isStoreActive());
+                          }
                         },
                       );
                     },
@@ -776,6 +966,7 @@ class _MenuItem extends StatelessWidget {
   final String label;
   final String description;
   final VoidCallback onTap;
+  final Widget? trailing;
 
   const _MenuItem({
     required this.icon,
@@ -783,6 +974,7 @@ class _MenuItem extends StatelessWidget {
     required this.label,
     required this.description,
     required this.onTap,
+    this.trailing,
   });
 
   @override
@@ -822,7 +1014,7 @@ class _MenuItem extends StatelessWidget {
                 ],
               ),
             ),
-            Icon(Icons.chevron_right, color: Colors.grey[400]),
+            trailing ?? Icon(Icons.chevron_right, color: Colors.grey[400]),
           ],
         ),
       ),

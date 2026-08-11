@@ -8,7 +8,7 @@ import 'package:local_basket_business/data/datasources/delivery/delivery_remote_
 
 class DeliveryPartnerReportsScreen extends StatefulWidget {
   final VoidCallback onBack;
-  final int partnerId;
+  final String partnerId;
   const DeliveryPartnerReportsScreen({
     super.key,
     required this.onBack,

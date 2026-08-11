@@ -71,12 +71,16 @@ class DeliveryRemoteDataSource {
         list = data['content'] as List;
       } else if (data['data'] is List) {
         list = data['data'] as List;
+      } else if (data['items'] is List) {
+        list = data['items'] as List;
       } else if (data['data'] is Map<String, dynamic>) {
         final nested = data['data'] as Map<String, dynamic>;
         if (nested['content'] is List) {
           list = nested['content'] as List;
         } else if (nested['data'] is List) {
           list = nested['data'] as List;
+        } else if (nested['items'] is List) {
+          list = nested['items'] as List;
         } else {
           list = [];
         }
@@ -92,6 +96,42 @@ class DeliveryRemoteDataSource {
         .whereType<Map>()
         .map((e) => Map<String, dynamic>.from(e))
         .toList();
+  }
+
+  Future<List<Map<String, dynamic>>> listAgentsByB2b({
+    required String b2bUnitId,
+  }) async {
+    final token = await _storage.readToken();
+    if (kDebugMode) {
+      debugPrint('[API] List Agents -> GET /api/agents/b2b/$b2bUnitId');
+    }
+
+    final res = await _client.dio.get(
+      '/api/agents/b2b/$b2bUnitId',
+      options: _authOptions(token),
+    );
+    return _extractList(res.data);
+  }
+
+  Future<Map<String, dynamic>> getAgentDetails({
+    required String agentId,
+  }) async {
+    final token = await _storage.readToken();
+    if (kDebugMode) {
+      debugPrint('[API] Agent Details -> GET /api/agents/$agentId');
+    }
+
+    final res = await _client.dio.get(
+      '/api/agents/$agentId',
+      options: _authOptions(token),
+    );
+    final data = res.data;
+    if (data is Map<String, dynamic>) {
+      final nested = data['data'];
+      if (nested is Map<String, dynamic>) return nested;
+      return data;
+    }
+    return {'data': data};
   }
 
   Future<List<Map<String, dynamic>>> listPartnersPaged({
@@ -159,34 +199,32 @@ class DeliveryRemoteDataSource {
     return _extractList(res.data);
   }
 
-  Future<void> blockPartner({required int partnerId}) async {
+  Future<void> blockPartner({required String partnerId}) async {
     final token = await _storage.readToken();
     if (kDebugMode) {
       debugPrint(
-        '[API] Block Partner -> PUT /delivery/api/partners/$partnerId/block',
+        '[API] Deactivate Agent -> PUT /api/agents/$partnerId/deactivate',
       );
     }
     await _client.dio.put(
-      '/delivery/api/partners/$partnerId/block',
+      '/api/agents/$partnerId/deactivate',
       options: _authOptions(token),
     );
   }
 
-  Future<void> unblockPartner({required int partnerId}) async {
+  Future<void> unblockPartner({required String partnerId}) async {
     final token = await _storage.readToken();
     if (kDebugMode) {
-      debugPrint(
-        '[API] Unblock Partner -> PUT /delivery/api/partners/$partnerId/unblock',
-      );
+      debugPrint('[API] Activate Agent -> PUT /api/agents/$partnerId/activate');
     }
     await _client.dio.put(
-      '/delivery/api/partners/$partnerId/unblock',
+      '/api/agents/$partnerId/activate',
       options: _authOptions(token),
     );
   }
 
   Future<dynamic> getDeliveryPartnerReport({
-    required int partnerId,
+    required String partnerId,
     required String period,
     required String from,
     required String to,
@@ -238,7 +276,6 @@ class DeliveryRemoteDataSource {
 
   Future<Map<String, dynamic>> addPartner({
     required String vehicleNumber,
-    required bool available,
     required String mobileNumber,
     required String fullName,
     String? storeId,
@@ -251,33 +288,51 @@ class DeliveryRemoteDataSource {
     int maxConcurrentAssignments = 1,
   }) async {
     final token = await _storage.readToken();
+    final payload = {
+      'mobileNumber': mobileNumber,
+      'fullName': fullName,
+      if (storeId != null && storeId.isNotEmpty) 'storeId': storeId,
+      if (b2bUnitId != null && b2bUnitId.isNotEmpty) 'b2bUnitId': b2bUnitId,
+      'agentType': 'DELIVERY_BOY',
+      'displayName': displayName ?? fullName,
+      'bio': bio ?? '',
+      'maxConcurrentAssignments': maxConcurrentAssignments,
+      'vehicleRegistration': vehicleNumber,
+      'vehicleType': vehicleType,
+      'specializations': specializations,
+      'sessionMode': sessionMode,
+    };
     if (kDebugMode) {
       debugPrint('[API] Add Delivery Partner -> POST /api/agents');
-      debugPrint(
-        'Payload: {mobileNumber: $mobileNumber, fullName: $fullName, storeId: $storeId, b2bUnitId: $b2bUnitId}',
-      );
+      debugPrint('Payload: $payload');
     }
 
     final res = await _client.dio.post(
       '/api/agents',
-      data: {
-        'mobileNumber': mobileNumber,
-        'fullName': fullName,
-        'storeId': storeId,
-        'b2bUnitId': b2bUnitId,
-        'agentType': 'DELIVERY_BOY',
-        'displayName': displayName ?? fullName,
-        'bio': bio ?? '',
-        'maxConcurrentAssignments': maxConcurrentAssignments,
-        'vehicleRegistration': vehicleNumber,
-        'vehicleType': vehicleType,
-        'specializations': specializations,
-        'sessionMode': sessionMode,
-      },
+      data: payload,
       options: _authOptions(token),
     );
     final data = res.data;
     if (data is Map<String, dynamic>) return data;
+    return {'success': true, 'data': data};
+  }
+
+  Future<Map<String, dynamic>> verifyAgent({required String agentId}) async {
+    final token = await _storage.readToken();
+    if (kDebugMode) {
+      debugPrint('[API] Verify Agent -> PUT /api/agents/$agentId/verify');
+    }
+
+    final res = await _client.dio.put(
+      '/api/agents/$agentId/verify',
+      options: _authOptions(token),
+    );
+    final data = res.data;
+    if (data is Map<String, dynamic>) {
+      final nested = data['data'];
+      if (nested is Map<String, dynamic>) return nested;
+      return data;
+    }
     return {'success': true, 'data': data};
   }
 }

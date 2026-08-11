@@ -7,7 +7,6 @@ import 'package:dio/dio.dart';
 import 'package:local_basket_business/core/env/env.dart';
 import 'package:local_basket_business/di/locator.dart';
 import 'package:local_basket_business/domain/repositories/business/business_repository.dart';
-import 'package:local_basket_business/core/session/session_store.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:local_basket_business/presentation/widgets/map_picker.dart';
@@ -25,6 +24,7 @@ class _RestaurantOnboardingScreenState
     extends State<RestaurantOnboardingScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
+  final _codeController = TextEditingController();
   final _phoneController = TextEditingController();
   final _addressController = TextEditingController();
   final _cityController = TextEditingController();
@@ -136,6 +136,7 @@ class _RestaurantOnboardingScreenState
     _placesDebounce?.cancel();
     _addressController.removeListener(_onAddressChanged);
     _nameController.dispose();
+    _codeController.dispose();
     _phoneController.dispose();
     _addressController.dispose();
     _cityController.dispose();
@@ -208,23 +209,15 @@ class _RestaurantOnboardingScreenState
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
     try {
-      final businessId = await _repo.onboardBusiness(
-        businessName: _nameController.text.trim(),
-        addressLine1: _addressController.text.trim(),
-        city: _cityController.text.trim(),
-        state: _stateController.text.trim(),
-        country: _countryController.text.trim(),
-        postalCode: _postalController.text.trim(),
-        contactNumber: _phoneController.text.trim(),
-        latitude: _latitudeController.text.trim(),
-        longitude: _longitudeController.text.trim(),
-      );
+      final latitude = double.parse(_latitudeController.text.trim());
+      final longitude = double.parse(_longitudeController.text.trim());
 
-      final roles = sl<SessionStore>().roleNames;
-      final isSuperAdmin = roles.contains('ROLE_SUPER_ADMIN');
-      if (isSuperAdmin && businessId != null && businessId > 0) {
-        await _repo.approveBusiness(businessId: businessId);
-      }
+      await _repo.createStoreWithLocation(
+        name: _nameController.text.trim(),
+        code: _codeController.text.trim(),
+        latitude: latitude,
+        longitude: longitude,
+      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -243,8 +236,8 @@ class _RestaurantOnboardingScreenState
         backgroundColor: AppColors.success,
       ),
     );
-    widget.onBack();
     setState(() => _isLoading = false);
+    widget.onBack();
   }
 
   @override
@@ -309,13 +302,19 @@ class _RestaurantOnboardingScreenState
                             ),
                             const SizedBox(height: 16),
                             _buildTextField(
+                              controller: _codeController,
+                              label: 'Store Code',
+                              icon: Icons.qr_code_2,
+                              validator: (v) => v == null || v.isEmpty
+                                  ? 'Please enter store code'
+                                  : null,
+                            ),
+                            const SizedBox(height: 16),
+                            _buildTextField(
                               controller: _phoneController,
-                              label: 'Phone Number',
+                              label: 'Phone Number (Optional)',
                               icon: Icons.phone,
                               keyboardType: TextInputType.phone,
-                              validator: (v) => v == null || v.isEmpty
-                                  ? 'Please enter phone number'
-                                  : null,
                             ),
                             const SizedBox(height: 16),
                             _buildTextField(
@@ -392,39 +391,27 @@ class _RestaurantOnboardingScreenState
                             const SizedBox(height: 16),
                             _buildTextField(
                               controller: _cityController,
-                              label: 'City',
+                              label: 'City (Optional)',
                               icon: Icons.location_city,
-                              validator: (v) => v == null || v.isEmpty
-                                  ? 'Please enter city'
-                                  : null,
                             ),
                             const SizedBox(height: 16),
                             _buildTextField(
                               controller: _stateController,
-                              label: 'State',
+                              label: 'State (Optional)',
                               icon: Icons.map_outlined,
-                              validator: (v) => v == null || v.isEmpty
-                                  ? 'Please enter state'
-                                  : null,
                             ),
                             const SizedBox(height: 16),
                             _buildTextField(
                               controller: _countryController,
-                              label: 'Country',
+                              label: 'Country (Optional)',
                               icon: Icons.flag,
-                              validator: (v) => v == null || v.isEmpty
-                                  ? 'Please enter country'
-                                  : null,
                             ),
                             const SizedBox(height: 16),
                             _buildTextField(
                               controller: _postalController,
-                              label: 'Postal Code',
+                              label: 'Postal Code (Optional)',
                               icon: Icons.markunread_mailbox,
                               keyboardType: TextInputType.number,
-                              validator: (v) => v == null || v.isEmpty
-                                  ? 'Please enter postal code'
-                                  : null,
                             ),
                             const SizedBox(height: 16),
                             Row(
@@ -438,9 +425,14 @@ class _RestaurantOnboardingScreenState
                                         const TextInputType.numberWithOptions(
                                           decimal: true,
                                         ),
-                                    validator: (v) => v == null || v.isEmpty
-                                        ? 'Enter latitude'
-                                        : null,
+                                    validator: (v) {
+                                      if (v == null || v.trim().isEmpty) {
+                                        return 'Enter latitude';
+                                      }
+                                      return double.tryParse(v.trim()) == null
+                                          ? 'Invalid latitude'
+                                          : null;
+                                    },
                                   ),
                                 ),
                                 const SizedBox(width: 12),
@@ -453,9 +445,14 @@ class _RestaurantOnboardingScreenState
                                         const TextInputType.numberWithOptions(
                                           decimal: true,
                                         ),
-                                    validator: (v) => v == null || v.isEmpty
-                                        ? 'Enter longitude'
-                                        : null,
+                                    validator: (v) {
+                                      if (v == null || v.trim().isEmpty) {
+                                        return 'Enter longitude';
+                                      }
+                                      return double.tryParse(v.trim()) == null
+                                          ? 'Invalid longitude'
+                                          : null;
+                                    },
                                   ),
                                 ),
                               ],

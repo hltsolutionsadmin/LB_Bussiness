@@ -30,7 +30,7 @@ Future<void> setupLocator() async {
   // API Configuration
   final String baseUrl = EnvConfig.baseUrl.isNotEmpty
       ? EnvConfig.baseUrl
-      : 'https://gateway-service.purplefield-2b43f6a6.southindia.azurecontainerapps.io';
+      : 'https://gateway-service.orangeplant-f70408fb.centralindia.azurecontainerapps.io/';
   sl.registerLazySingleton<ApiConfig>(() => ApiConfig(
     baseUrl: baseUrl,
     endpoints: ApiConfig.endpointsV1,

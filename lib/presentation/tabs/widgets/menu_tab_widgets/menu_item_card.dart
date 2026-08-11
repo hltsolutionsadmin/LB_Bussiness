@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:local_basket_business/theme/app_colors.dart';
 
 class MenuItemCard extends StatelessWidget {
   final Map<String, dynamic> item;
+  final bool isUpdating;
   final VoidCallback onEdit;
   final Future<void> Function() onToggle;
   final Future<void> Function() onTimings;
@@ -11,6 +13,7 @@ class MenuItemCard extends StatelessWidget {
   const MenuItemCard({
     super.key,
     required this.item,
+    required this.isUpdating,
     required this.onEdit,
     required this.onToggle,
     required this.onTimings,
@@ -176,20 +179,34 @@ class MenuItemCard extends StatelessWidget {
                       ),
                       Row(
                         children: [
+                          if (isUpdating) ...[
+                            const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                            const SizedBox(width: 6),
+                          ],
                           Text(
-                            item['available'] ? 'Available' : 'Unavailable',
+                            item['available'] ? 'Active' : 'Inactive',
                             style: TextStyle(
                               fontSize: 12,
                               color: item['available']
-                                  ? Colors.green
-                                  : Colors.red,
+                                  ? AppColors.info
+                                  : AppColors.error,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
                           const SizedBox(width: 6),
                           Switch(
                             value: item['available'] == true,
-                            onChanged: (v) => onSwitchToggle(v),
-                            activeThumbColor: Colors.green,
+                            onChanged: isUpdating
+                                ? null
+                                : (v) => onSwitchToggle(v),
+                            activeThumbColor: AppColors.info,
+                            activeTrackColor: AppColors.info.withOpacity(0.35),
+                            inactiveThumbColor: AppColors.textMuted,
+                            inactiveTrackColor: const Color(0xFFE5E7EB),
                             materialTapTargetSize:
                                 MaterialTapTargetSize.shrinkWrap,
                           ),
