@@ -3,11 +3,13 @@ import 'package:flutter/material.dart';
 class OrderActionButtons extends StatelessWidget {
   final Map<String, dynamic> order;
   final Function(Map<String, dynamic>, String) onUpdateStatus;
+  final bool isUpdating;
 
   const OrderActionButtons({
     super.key,
     required this.order,
     required this.onUpdateStatus,
+    this.isUpdating = false,
   });
 
   String _stage(String status) {
@@ -44,7 +46,7 @@ class OrderActionButtons extends StatelessWidget {
       children: [
         Expanded(
           child: ElevatedButton(
-            onPressed: () => onUpdateStatus(order, 'PREPARING'),
+            onPressed: isUpdating ? null : () => onUpdateStatus(order, 'PREPARING'),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.green,
               foregroundColor: Colors.white,
@@ -53,13 +55,22 @@ class OrderActionButtons extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
               ),
             ),
-            child: const Text('Accept Order'),
+            child: isUpdating
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  )
+                : const Text('Accept Order'),
           ),
         ),
         const SizedBox(width: 12),
         Expanded(
           child: ElevatedButton(
-            onPressed: () => onUpdateStatus(order, 'REJECTED'),
+            onPressed: isUpdating ? null : () => onUpdateStatus(order, 'REJECTED'),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
               foregroundColor: Colors.white,
@@ -68,7 +79,16 @@ class OrderActionButtons extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
               ),
             ),
-            child: const Text('Reject'),
+            child: isUpdating
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  )
+                : const Text('Reject'),
           ),
         ),
       ],
@@ -79,7 +99,7 @@ class OrderActionButtons extends StatelessWidget {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton(
-        onPressed: () => onUpdateStatus(order, 'READY_FOR_PICKUP'),
+        onPressed: isUpdating ? null : () => onUpdateStatus(order, 'READY_FOR_PICKUP'),
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.green,
           foregroundColor: Colors.white,
@@ -88,7 +108,16 @@ class OrderActionButtons extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
           ),
         ),
-        child: const Text('Mark as Ready'),
+        child: isUpdating
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              )
+            : const Text('Mark as Ready'),
       ),
     );
   }

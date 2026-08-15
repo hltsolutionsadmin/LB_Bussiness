@@ -32,6 +32,7 @@ Future<bool?> showProductFormSheet(
   bool available = (existing?['available'] ?? true) == true;
   bool ignoreTax = false;
   bool discount = false;
+  bool isLoading = false;
 
   String productType = 'FOOD';
   String orderType = 'Online';
@@ -217,7 +218,8 @@ Future<bool?> showProductFormSheet(
                           ),
                         ),
                         child: ElevatedButton(
-                          onPressed: () async {
+                          onPressed: isLoading ? null : () async {
+                            setSheetState(() => isLoading = true);
                             try {
                               if (businessId == 0) {
                                 throw 'Business ID missing';
@@ -291,6 +293,7 @@ Future<bool?> showProductFormSheet(
                                 ),
                               );
                             } catch (e) {
+                              setSheetState(() => isLoading = false);
                               ScaffoldMessenger.of(
                                 ctx,
                               ).showSnackBar(SnackBar(content: Text('$e')));
@@ -301,14 +304,23 @@ Future<bool?> showProductFormSheet(
                             backgroundColor: Colors.transparent,
                             shadowColor: Colors.transparent,
                           ),
-                          child: Text(
-                            existing == null ? 'Create' : 'Update',
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white,
-                            ),
-                          ),
+                          child: isLoading
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                  ),
+                                )
+                              : Text(
+                                  existing == null ? 'Create' : 'Update',
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.white,
+                                  ),
+                                ),
                         ),
                       ),
                       const SizedBox(height: 20),

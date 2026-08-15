@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
+import 'package:uuid/uuid.dart';
 import 'package:local_basket_business/routes/app_router.dart';
 import 'package:local_basket_business/di/locator.dart';
 import 'package:local_basket_business/domain/repositories/auth/auth_repository.dart';
@@ -21,7 +22,10 @@ class _OTPScreenState extends State<OTPScreen> {
     6,
     (_) => TextEditingController(),
   );
+  // Focus nodes for the actual TextFields
   final List<FocusNode> _focusNodes = List.generate(6, (_) => FocusNode());
+  // Separate focus nodes for the Focus wrappers used to intercept key events
+  final List<FocusNode> _wrapperFocusNodes = List.generate(6, (_) => FocusNode());
   final ScrollController _scrollController = ScrollController();
 
   String? _errorText;
@@ -80,31 +84,27 @@ class _OTPScreenState extends State<OTPScreen> {
 
     try {
       final repo = sl<AuthRepository>();
+      final deviceId = const Uuid().v4();
       final token = await repo.loginWithOtp(
         otp: otp,
         primaryContact: widget.phoneNumber,
+        fullName: 'User',
+        deviceId: deviceId,
       );
 
-      // ignore: avoid_print
       print('[AUTH] TOKEN: $token');
 
       try {
-        final details = await repo.getUserDetails();
-        sl<SessionStore>().setUser(details);
+        final userDetailsMap = await repo.getUserDetails();
+        sl<SessionStore>().setUser(userDetailsMap);
       } catch (_) {}
 
       if (!mounted) return;
 
       final roles = sl<SessionStore>().roleNames;
+      print('Roles: $roles');
 
-      if (roles.contains('ROLE_USER_ADMIN')) {
-        Navigator.of(
-          context,
-        ).pushNamedAndRemoveUntil(AppRoutes.admin, (_) => false);
-        return;
-      }
-
-      if (roles.contains('ROLE_RESTAURANT_OWNER')) {
+      if (roles.contains('ROLE_BUSINESS_ADMIN')) {
         Navigator.of(
           context,
         ).pushNamedAndRemoveUntil(AppRoutes.dashboard, (_) => false);
@@ -112,8 +112,7 @@ class _OTPScreenState extends State<OTPScreen> {
       }
 
       setState(() {
-        _errorText =
-            'Your account does not have access. Please contact support.';
+        _errorText = 'You are not allowed. You are not an admin.';
       });
     } catch (_) {
       if (mounted) {
@@ -131,7 +130,6 @@ class _OTPScreenState extends State<OTPScreen> {
 
     try {
       final res = await sl<AuthRepository>().triggerOtpWithResponse(
-        otpType: 'SIGNIN',
         primaryContact: widget.phoneNumber,
       );
 
@@ -290,42 +288,73 @@ class _OTPScreenState extends State<OTPScreen> {
                                       mainAxisAlignment:
                                           MainAxisAlignment.spaceEvenly,
                                       children: List.generate(6, (index) {
-                                        return SizedBox(
-                                          width: 48,
-                                          height: 56,
-                                          child: TextField(
-                                            controller: _controllers[index],
-                                            focusNode: _focusNodes[index],
-                                            textAlign: TextAlign.center,
-                                            keyboardType: TextInputType.number,
-                                            maxLength: 1,
-                                            inputFormatters: [
-                                              FilteringTextInputFormatter
-                                                  .digitsOnly,
-                                            ],
-                                            decoration: InputDecoration(
-                                              counterText: '',
-                                              border: OutlineInputBorder(
-                                                borderRadius:
-                                                    BorderRadius.circular(12),
-                                              ),
-                                              focusedBorder: OutlineInputBorder(
-                                                borderRadius:
-                                                    BorderRadius.circular(12),
-                                                borderSide: const BorderSide(
-                                                  color: Color(0xFFF97316),
-                                                  width: 2,
+                                        return Focus(
+                                          focusNode: _wrapperFocusNodes[index],
+                                          onKey: (node, event) {
+                                            if (event is RawKeyDownEvent &&
+                                                event.logicalKey ==
+                                                    LogicalKeyboardKey
+                                                        .backspace) {
+                                              // If current field is empty, move to previous
+                                              // and clear it. This allows repeated backspace
+                                              // presses to walk left clearing one by one.
+                                              if (_controllers[index].text.isEmpty) {
+                                                if (index > 0) {
+                                                  _controllers[index - 1]
+                                                      .clear();
+                                                  _focusNodes[index - 1]
+                                                      .requestFocus();
+                                                  return KeyEventResult.handled;
+                                                }
+                                              } else {
+                                                // Let the field handle deleting its own char
+                                                _controllers[index].clear();
+                                                return KeyEventResult.handled;
+                                              }
+                                            }
+                                            return KeyEventResult.ignored;
+                                          },
+                                          child: SizedBox(
+                                            width: 48,
+                                            height: 56,
+                                            child: TextField(
+                                              controller: _controllers[index],
+                                              focusNode: _focusNodes[index],
+                                              textAlign: TextAlign.center,
+                                              keyboardType:
+                                                  TextInputType.number,
+                                              maxLength: 1,
+                                              inputFormatters: [
+                                                FilteringTextInputFormatter
+                                                    .digitsOnly,
+                                              ],
+                                              decoration: InputDecoration(
+                                                counterText: '',
+                                                border: OutlineInputBorder(
+                                                  borderRadius:
+                                                      BorderRadius.circular(12),
+                                                ),
+                                                focusedBorder:
+                                                    OutlineInputBorder(
+                                                  borderRadius:
+                                                      BorderRadius.circular(12),
+                                                  borderSide: const BorderSide(
+                                                    color: Color(0xFFF97316),
+                                                    width: 2,
+                                                  ),
                                                 ),
                                               ),
+                                              onChanged: (v) {
+                                                if (v.isNotEmpty) {
+                                                  if (index < 5) {
+                                                    _focusNodes[index + 1]
+                                                        .requestFocus();
+                                                  }
+                                                }
+                                                _scrollToBottom();
+                                                setState(() => _errorText = null);
+                                              },
                                             ),
-                                            onChanged: (v) {
-                                              if (v.isNotEmpty && index < 5) {
-                                                _focusNodes[index + 1]
-                                                    .requestFocus();
-                                              }
-                                              _scrollToBottom();
-                                              setState(() => _errorText = null);
-                                            },
                                           ),
                                         );
                                       }),

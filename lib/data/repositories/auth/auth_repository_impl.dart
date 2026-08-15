@@ -10,21 +10,19 @@ class AuthRepositoryImpl implements AuthRepository {
 
   @override
   Future<void> triggerOtp({
-    required String otpType,
     required String primaryContact,
   }) {
     return _remote.triggerOtp(
-      TriggerOtpRequest(otpType: otpType, primaryContact: primaryContact),
+      TriggerOtpRequest(primaryContact: primaryContact),
     );
   }
 
   @override
   Future<Map<String, dynamic>> triggerOtpWithResponse({
-    required String otpType,
     required String primaryContact,
   }) {
     return _remote.triggerOtpWithResponse(
-      TriggerOtpRequest(otpType: otpType, primaryContact: primaryContact),
+      TriggerOtpRequest(primaryContact: primaryContact),
     );
   }
 
@@ -32,9 +30,16 @@ class AuthRepositoryImpl implements AuthRepository {
   Future<String> loginWithOtp({
     required String otp,
     required String primaryContact,
+    required String fullName,
+    required String deviceId,
   }) {
     return _remote.login(
-      LoginRequest(otp: otp, primaryContact: primaryContact),
+      LoginRequest(
+        otp: otp,
+        primaryContact: primaryContact,
+        fullName: fullName,
+        deviceId: deviceId,
+      ),
     );
   }
 

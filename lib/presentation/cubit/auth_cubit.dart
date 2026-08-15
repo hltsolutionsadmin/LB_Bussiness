@@ -14,7 +14,7 @@ class AuthCubit extends Cubit<AuthState> {
       state.copyWith(status: AuthStatus.sendingOtp, phone: phone, error: null),
     );
     try {
-      await _repo.triggerOtp(otpType: 'SIGNIN', primaryContact: phone);
+      await _repo.triggerOtp(primaryContact: phone);
       emit(state.copyWith(status: AuthStatus.otpSent));
     } catch (e) {
       emit(
@@ -23,12 +23,14 @@ class AuthCubit extends Cubit<AuthState> {
     }
   }
 
-  Future<void> verifyOtp(String otp) async {
+  Future<void> verifyOtp(String otp, {String? fullName, String? deviceId}) async {
     emit(state.copyWith(status: AuthStatus.verifyingOtp, error: null));
     try {
       final token = await _repo.loginWithOtp(
         otp: otp,
         primaryContact: state.phone!,
+        fullName: fullName ?? 'User',
+        deviceId: deviceId ?? 'device-uuid-default',
       );
       await _repo.saveToken(token);
       final user = await _repo.getUserDetails();
