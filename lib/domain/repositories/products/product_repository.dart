@@ -13,6 +13,13 @@ abstract class ProductRepository {
     required int size,
   });
 
+  Future<ProductPage> getProductsByB2bUnit({
+    required String b2bUnitId,
+    required String storeId,
+    required int page,
+    required int size,
+  });
+
   Future<Map<String, dynamic>> createProduct({
     required String name,
     required String shortCode,

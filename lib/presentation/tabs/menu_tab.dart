@@ -29,7 +29,7 @@ class _MenuTabState extends State<MenuTab> {
   bool _isLoading = false;
   bool _hasNext = true;
   int _page = 0;
-  final int _size = 10;
+  final int _size = 20;
 
   final List<String> _categories = [
     'all',
@@ -78,13 +78,15 @@ class _MenuTabState extends State<MenuTab> {
 
   Future<void> _updateSingleItem(dynamic itemId) async {
     final storeId = sl<SessionStore>().storeId;
-    if (storeId.isEmpty) return;
+    final b2bUnitId = sl<SessionStore>().b2bUnitId;
+    if (storeId.isEmpty || b2bUnitId.isEmpty) return;
 
     try {
       final repo = sl<ProductRepository>();
       Map<String, dynamic>? updatedItem;
       for (int page = 0; page < _page; page++) {
-        final pageData = await repo.getProductsByStoreId(
+        final pageData = await repo.getProductsByB2bUnit(
+          b2bUnitId: b2bUnitId,
           storeId: storeId,
           page: page,
           size: _size,
@@ -123,7 +125,8 @@ class _MenuTabState extends State<MenuTab> {
   Future<void> _loadPage({bool refresh = false}) async {
     if (_isLoading) return;
     final storeId = sl<SessionStore>().storeId;
-    if (storeId.isEmpty) {
+    final b2bUnitId = sl<SessionStore>().b2bUnitId;
+    if (storeId.isEmpty || b2bUnitId.isEmpty) {
       if (mounted) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
@@ -143,7 +146,8 @@ class _MenuTabState extends State<MenuTab> {
       }
       if (!_hasNext) return;
       final repo = sl<ProductRepository>();
-      final pageData = await repo.getProductsByStoreId(
+      final pageData = await repo.getProductsByB2bUnit(
+        b2bUnitId: b2bUnitId,
         storeId: storeId,
         page: _page,
         size: _size,

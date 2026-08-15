@@ -33,6 +33,21 @@ class ProductRepositoryImpl implements ProductRepository {
   }
 
   @override
+  Future<ProductPage> getProductsByB2bUnit({
+    required String b2bUnitId,
+    required String storeId,
+    required int page,
+    required int size,
+  }) {
+    return _remote.fetchProductsByB2bUnit(
+      b2bUnitId: b2bUnitId,
+      storeId: storeId,
+      page: page,
+      size: size,
+    );
+  }
+
+  @override
   Future<Map<String, dynamic>> createProduct({
     required String name,
     required String shortCode,
