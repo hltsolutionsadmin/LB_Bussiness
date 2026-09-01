@@ -601,9 +601,14 @@ class _DetailsSheet extends StatefulWidget {
 }
 
 class _DetailsSheetState extends State<_DetailsSheet> {
+  static const int _pageSize = 20;
+
   final List<Map<String, dynamic>> _products = [];
   final Set<String> _updatingProductIds = {};
   bool _loading = true;
+  bool _loadingMore = false;
+  bool _hasNext = true;
+  int _page = 0;
   String? _errorText;
 
   @override
@@ -616,25 +621,52 @@ class _DetailsSheetState extends State<_DetailsSheet> {
     setState(() {
       _loading = true;
       _errorText = null;
+      _page = 0;
+      _hasNext = true;
     });
 
     try {
       final page = await GetIt.I<ProductRepository>().getProductsByStoreId(
         storeId: widget.data.id,
         page: 0,
-        size: 50,
+        size: _pageSize,
       );
       if (!mounted) return;
       setState(() {
         _products
           ..clear()
           ..addAll(page.items);
+        _hasNext = page.hasNext;
+        _page = page.page + 1;
       });
     } catch (_) {
       if (!mounted) return;
       setState(() => _errorText = 'Failed to load products');
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _loadMoreProducts() async {
+    if (_loading || _loadingMore || !_hasNext) return;
+    setState(() => _loadingMore = true);
+
+    try {
+      final page = await GetIt.I<ProductRepository>().getProductsByStoreId(
+        storeId: widget.data.id,
+        page: _page,
+        size: _pageSize,
+      );
+      if (!mounted) return;
+      setState(() {
+        _products.addAll(page.items);
+        _hasNext = page.hasNext;
+        _page = page.page + 1;
+      });
+    } catch (_) {
+      // Silently ignore load-more failures; user can retry by scrolling again.
+    } finally {
+      if (mounted) setState(() => _loadingMore = false);
     }
   }
 
@@ -722,165 +754,188 @@ class _DetailsSheetState extends State<_DetailsSheet> {
             topRight: Radius.circular(24),
           ),
         ),
-        child: ListView(
-          controller: controller,
-          padding: const EdgeInsets.all(16),
-          children: [
-            GlassCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: Image.network(
-                          widget.data.imageUrl,
-                          width: 80,
-                          height: 80,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) {
-                            return Container(
-                              width: 80,
-                              height: 80,
-                              decoration: BoxDecoration(
-                                color: AppColors.orange600.withOpacity(0.2),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: const Icon(
-                                Icons.restaurant,
-                                color: AppColors.orange600,
-                                size: 40,
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              widget.data.name,
-                              style: const TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.textPrimary,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              widget.data.code.isEmpty
-                                  ? 'Store'
-                                  : 'Code: ${widget.data.code}',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: AppColors.textSecondary,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            _StoreStatusText(active: widget.data.active),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  _DetailRow(
-                    icon: Icons.badge_outlined,
-                    label: 'Store ID',
-                    value: widget.data.id,
-                  ),
-                  const SizedBox(height: 12),
-                  _DetailRow(
-                    icon: Icons.qr_code_2,
-                    label: 'Store Code',
-                    value: widget.data.code.isEmpty ? '—' : widget.data.code,
-                  ),
-                  const SizedBox(height: 12),
-                  _DetailRow(
-                    icon: Icons.toggle_on_outlined,
-                    label: 'Status',
-                    value: widget.data.status,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            GlassCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Expanded(
-                        child: Text(
-                          'Products',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.textPrimary,
+        child: NotificationListener<ScrollNotification>(
+          onNotification: (notification) {
+            if (_hasNext &&
+                !_loading &&
+                !_loadingMore &&
+                notification.metrics.pixels >=
+                    notification.metrics.maxScrollExtent - 200) {
+              _loadMoreProducts();
+            }
+            return false;
+          },
+          child: ListView(
+            controller: controller,
+            padding: const EdgeInsets.all(16),
+            children: [
+              GlassCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.network(
+                            widget.data.imageUrl,
+                            width: 80,
+                            height: 80,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) {
+                              return Container(
+                                width: 80,
+                                height: 80,
+                                decoration: BoxDecoration(
+                                  color: AppColors.orange600.withOpacity(0.2),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Icon(
+                                  Icons.restaurant,
+                                  color: AppColors.orange600,
+                                  size: 40,
+                                ),
+                              );
+                            },
                           ),
                         ),
-                      ),
-                      if (!_loading)
-                        Text(
-                          '${_products.length}',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: AppColors.textSecondary,
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                widget.data.name,
+                                style: const TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                widget.data.code.isEmpty
+                                    ? 'Store'
+                                    : 'Code: ${widget.data.code}',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              _StoreStatusText(active: widget.data.active),
+                            ],
                           ),
                         ),
-                      IconButton(
-                        onPressed: _loading ? null : _loadProducts,
-                        icon: const Icon(Icons.refresh),
-                        color: AppColors.orange600,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  if (_loading)
-                    const Center(
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(vertical: 24),
-                        child: CircularProgressIndicator(),
-                      ),
-                    )
-                  else if (_errorText != null)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      child: Text(
-                        _errorText!,
-                        style: const TextStyle(color: AppColors.error),
-                      ),
-                    )
-                  else if (_products.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      child: Text(
-                        'No products found for this restaurant',
-                        style: TextStyle(color: AppColors.textSecondary),
-                      ),
-                    )
-                  else
-                    ..._products.map(
-                      (product) => Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: _ProductSummaryCard(
-                          product: product,
-                          isUpdating: _updatingProductIds.contains(
-                            _productId(product),
-                          ),
-                          onActiveChanged: (active) =>
-                              _setProductActive(product, active),
-                        ),
-                      ),
+                      ],
                     ),
-                ],
+                    const SizedBox(height: 20),
+                    _DetailRow(
+                      icon: Icons.badge_outlined,
+                      label: 'Store ID',
+                      value: widget.data.id,
+                    ),
+                    const SizedBox(height: 12),
+                    _DetailRow(
+                      icon: Icons.qr_code_2,
+                      label: 'Store Code',
+                      value: widget.data.code.isEmpty ? '—' : widget.data.code,
+                    ),
+                    const SizedBox(height: 12),
+                    _DetailRow(
+                      icon: Icons.toggle_on_outlined,
+                      label: 'Status',
+                      value: widget.data.status,
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 16),
+              GlassCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Products',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                        ),
+                        if (!_loading)
+                          Text(
+                            '${_products.length}',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        IconButton(
+                          onPressed: _loading ? null : _loadProducts,
+                          icon: const Icon(Icons.refresh),
+                          color: AppColors.orange600,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    if (_loading)
+                      const Center(
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(vertical: 24),
+                          child: CircularProgressIndicator(),
+                        ),
+                      )
+                    else if (_errorText != null)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Text(
+                          _errorText!,
+                          style: const TextStyle(color: AppColors.error),
+                        ),
+                      )
+                    else if (_products.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Text(
+                          'No products found for this restaurant',
+                          style: TextStyle(color: AppColors.textSecondary),
+                        ),
+                      )
+                    else
+                      ..._products.map(
+                        (product) => Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: _ProductSummaryCard(
+                            product: product,
+                            isUpdating: _updatingProductIds.contains(
+                              _productId(product),
+                            ),
+                            onActiveChanged: (active) =>
+                                _setProductActive(product, active),
+                          ),
+                        ),
+                      ),
+                    if (_loadingMore)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 16),
+                        child: Center(
+                          child: SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -115,118 +115,120 @@ class OrdersRemoteDataSource {
       queryParameters: {'page': page, 'size': size, 'sort': 'createdDate,desc'},
       options: _authOptions(token),
     );
-    final data = res.data;
 
-    List list;
-    int totalPages = 0;
-    int number = page;
-
-    if (data is Map<String, dynamic>) {
-      if (data['content'] is List) {
-        list = data['content'] as List;
-        totalPages = (data['totalPages'] as int?) ?? 0;
-        number = (data['number'] as int?) ?? page;
-      } else if (data['data'] is Map<String, dynamic>) {
-        final inner = data['data'] as Map<String, dynamic>;
-        list = (inner['content'] is List) ? inner['content'] as List : const [];
-        totalPages = (inner['totalPages'] as int?) ?? 0;
-        number = (inner['number'] as int?) ?? page;
-      } else if (data['data'] is List) {
-        list = data['data'] as List;
+    final raw = res.data;
+    Map<String, dynamic> pageJson;
+    if (raw is Map<String, dynamic>) {
+      if (raw['content'] is List) {
+        pageJson = raw;
+      } else if (raw['data'] is Map) {
+        pageJson = Map<String, dynamic>.from(raw['data'] as Map);
       } else {
-        list = [];
+        pageJson = raw;
       }
-    } else if (data is List) {
-      list = data;
     } else {
-      list = [];
+      pageJson = <String, dynamic>{};
     }
 
-    final items = list.whereType<Map>().map<Map<String, dynamic>>((raw) {
-      final m = Map<String, dynamic>.from(raw);
-      double toDouble(dynamic v) {
-        if (v is num) return v.toDouble();
-        final s = v?.toString();
-        return double.tryParse(s ?? '') ?? 0.0;
-      }
-
-      String str(dynamic v) => v?.toString() ?? '';
-
-      final idStr = str(m['id']);
-      final shortId = idStr.length > 8 ? idStr.substring(0, 8).toUpperCase() : idStr.toUpperCase();
-
-      final lineItems = (m['lineItems'] is List)
-          ? List<Map<String, dynamic>>.from(
-              (m['lineItems'] as List).whereType<Map>().map(
-                (e) => Map<String, dynamic>.from(e),
-              ),
-            )
-          : <Map<String, dynamic>>[];
-
-      return {
-        'id': m['id'],
-        'orderNumber': shortId,
-        'status': str(m['status']),
-        'total': toDouble(m['totalPrice'] ?? m['subTotal']),
-        'createdAt': m['createdDate'],
-        'customerName': str(m['userId']),
-        'itemsCount': lineItems.length,
-
-        'orderStatus': str(m['status']),
-        'username': str(m['userId']),
-        'createdDate': m['createdDate'],
-        'updatedDate': m['updatedDate'],
-        'totalAmount': toDouble(m['totalPrice'] ?? m['subTotal']),
-
-        'mobileNumber': str(m['mobileNumber']),
-        'notes': str(m['notes']),
-        'paymentStatus': str(m['paymentStatus']),
-        'deliveryStatus': str(m['fulfillmentStatus'] ?? m['status']),
-        'totalTaxAmount': toDouble(m['totalTax']),
-        'taxInclusive': m['taxInclusive'] == true,
-        'selfOrder': m['selfOrder'] == true,
-        'orderType': str(m['orderType']),
-        'subTotal': toDouble(m['subTotal']),
-        'totalDiscount': toDouble(m['totalDiscount']),
-
-        'deliveryPartnerId': str(m['deliveryPartnerId']),
-        'deliveryPartnerName': str(m['deliveryPartnerName']),
-        'deliveryPartnerMobileNumber': str(m['deliveryPartnerMobileNumber']),
-
-        'userAddress': (m['userAddress'] is Map)
-            ? Map<String, dynamic>.from(m['userAddress'] as Map)
-            : null,
-        'businessAddress': (m['businessAddress'] is Map)
-            ? Map<String, dynamic>.from(m['businessAddress'] as Map)
-            : null,
-
-        'orderItems': lineItems.map<Map<String, dynamic>>((item) {
-          return {
-            'productName': item['productName'],
-            'productCode': item['productCode'],
-            'quantity': item['quantity'],
-            'unitPrice': toDouble(item['unitPrice']),
-            'totalPrice': toDouble(item['totalPrice']),
-            'discountPrice': toDouble(item['discountPrice']),
-            'taxAmount': toDouble(item['taxAmount']),
-            'status': item['status'],
-            'fulfillmentStatus': item['fulfillmentStatus'],
-            'price': toDouble(item['unitPrice']),
-            'totalAmount': toDouble(item['totalPrice']),
-          };
-        }).toList(),
-      };
-    }).toList();
+    final pageResponse = OrdersPageResponse.fromJson(pageJson);
+    final items = pageResponse.content.map(_toLegacyOrderMap).toList();
 
     if (kDebugMode && items.isNotEmpty) {
       debugPrint('[API] Orders normalized sample: ${items.first}');
     }
 
-    final hasNext = totalPages == 0
+    final hasNext = pageResponse.totalPages == 0
         ? items.length == size
-        : (number + 1) < totalPages;
+        : (pageResponse.number + 1) < pageResponse.totalPages;
 
-    return OrdersPage(items: items, hasNext: hasNext, page: number, size: size);
+    return OrdersPage(
+      items: items,
+      hasNext: hasNext,
+      page: pageResponse.number,
+      size: pageResponse.size == 0 ? size : pageResponse.size,
+    );
+  }
+
+  Map<String, dynamic> _toLegacyOrderMap(OrderResponse o) {
+    final shortId = o.id.length > 8
+        ? o.id.substring(0, 8).toUpperCase()
+        : o.id.toUpperCase();
+    final customerName = o.user?.displayName ?? '';
+    final agentName = o.fulfillmentAgent?.displayName ?? '';
+    final createdIso = o.createdDate?.toIso8601String();
+    final updatedIso = o.updatedDate?.toIso8601String();
+
+    return {
+      'id': o.id,
+      'orderNumber': shortId,
+      'status': o.status,
+      'total': o.totalPrice,
+      'createdAt': createdIso,
+      'customerName': customerName,
+      'itemsCount': o.lineItems.length,
+
+      'orderStatus': o.status,
+      'username': customerName,
+      'createdDate': createdIso,
+      'updatedDate': updatedIso,
+      'totalAmount': o.totalPrice,
+
+      'mobileNumber':
+          o.shippingAddress?.mobileNumber ??
+          o.billingAddress?.mobileNumber ??
+          '',
+      'notes': o.notes ?? '',
+      'paymentStatus': o.paymentStatus,
+      'deliveryStatus': o.status,
+      'totalTaxAmount': o.totalTax,
+      'taxInclusive': o.taxInclusive,
+      'selfOrder': o.selfOrder,
+      'orderType': o.orderType,
+      'subTotal': o.subTotal,
+      'totalDiscount': o.totalDiscount,
+      'deliveryCharge': o.deliveryCharge,
+      'platformFee': o.platformFee,
+
+      'deliveryPartnerId': o.deliveryPartnerId ?? '',
+      'deliveryPartnerName': agentName,
+      'deliveryPartnerMobileNumber': o.fulfillmentAgent?.mobileNumber ?? '',
+
+      'userAddress': (o.shippingAddress?.hasContent ?? false)
+          ? {
+              'addressLine1': o.shippingAddress!.line ?? '',
+              'city': o.shippingAddress!.city ?? '',
+              'state': o.shippingAddress!.state ?? '',
+              'postalCode': o.shippingAddress!.postalCode ?? '',
+              'country': o.shippingAddress!.country ?? '',
+            }
+          : null,
+      'businessAddress': o.store != null
+          ? {
+              'name': o.store!.storeName ?? '',
+              'addressLine1': o.store!.address ?? '',
+              'city': '',
+              'state': '',
+              'postalCode': '',
+              'country': '',
+            }
+          : null,
+
+      'orderItems': o.lineItems.map<Map<String, dynamic>>((item) {
+        return {
+          'productName': item.productName,
+          'productCode': item.productCode,
+          'quantity': item.quantity,
+          'unitPrice': item.unitPrice,
+          'totalPrice': item.totalPrice,
+          'discountPrice': item.discountPrice,
+          'taxAmount': item.taxAmount,
+          'status': item.status,
+          'fulfillmentStatus': item.fulfillmentStatus,
+          'price': item.unitPrice,
+          'totalAmount': item.totalPrice,
+        };
+      }).toList(),
+    };
   }
 
   Future<Map<String, dynamic>> getBusinessKpi({required int businessId}) async {
@@ -255,12 +257,12 @@ class OrdersRemoteDataSource {
     final token = await _storage.readToken();
     if (kDebugMode) {
       debugPrint(
-        '[API] Update Order Status -> PUT /api/orders/$orderId/status?status=$status',
+        '[API] Update Order Status -> PUT /api/fulfillment/$orderId/status',
       );
     }
     await _client.dio.put(
-      '/api/orders/$orderId/status',
-      queryParameters: {'status': status},
+      '/api/fulfillment/$orderId/status',
+      data: {'status': status},
       options: _authOptions(token),
     );
   }

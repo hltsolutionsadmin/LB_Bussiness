@@ -20,6 +20,7 @@ import 'package:local_basket_business/domain/repositories/products/product_repos
 import 'package:local_basket_business/domain/repositories/orders/orders_repository.dart';
 import 'package:local_basket_business/domain/repositories/business/business_repository.dart';
 import 'package:local_basket_business/core/services/orders_poller.dart';
+import 'package:local_basket_business/core/services/app_update_service.dart';
 
 final sl = GetIt.instance;
 
@@ -36,8 +37,10 @@ Future<void> setupLocator() async {
     endpoints: ApiConfig.endpointsV1,
   ));
   
-  sl.registerLazySingleton<DioClient>(() => DioClient(sl(), sl<ApiConfig>().baseUrl));
   sl.registerLazySingleton<AppSecureStorage>(() => AppSecureStorage());
+  sl.registerLazySingleton<DioClient>(
+    () => DioClient(sl(), sl<ApiConfig>().baseUrl, sl<AppSecureStorage>()),
+  );
   sl.registerLazySingleton<SessionStore>(() => SessionStore());
 
   // Data sources
@@ -76,4 +79,5 @@ Future<void> setupLocator() async {
   sl.registerLazySingleton<OrdersPoller>(
     () => OrdersPoller(sl<OrdersRepository>(), sl<SessionStore>()),
   );
+  sl.registerLazySingleton<AppUpdateService>(() => AppUpdateService());
 }

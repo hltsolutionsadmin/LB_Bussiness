@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:local_basket_business/routes/app_router.dart';
 import 'package:local_basket_business/di/locator.dart';
@@ -5,6 +6,8 @@ import 'package:local_basket_business/data/datasources/business/business_remote_
 import 'package:local_basket_business/domain/repositories/auth/auth_repository.dart';
 import 'package:local_basket_business/core/session/session_store.dart';
 import 'package:local_basket_business/core/storage/secure_storage.dart';
+import 'package:local_basket_business/core/services/app_update_service.dart';
+import 'package:local_basket_business/presentation/widgets/app_update_dialog.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -30,13 +33,27 @@ class _SplashScreenState extends State<SplashScreen>
       curve: Curves.easeInOut,
     );
     _fadeController.forward();
-    _goNext();
+    _boot();
   }
 
-  Future<bool> _isTokenExpired() async {
-    final expiryMs = await sl<AppSecureStorage>().readTokenExpiry();
-    if (expiryMs == null) return false;
-    return DateTime.now().millisecondsSinceEpoch >= expiryMs;
+  Future<void> _boot() async {
+    final blocked = await _maybeShowUpdateDialog();
+    // A forced update leaves the user on the splash screen with a
+    // non-dismissible dialog; don't continue into the app.
+    if (blocked || !mounted) return;
+    await _goNext();
+  }
+
+  /// Returns `true` when a forced update is in effect (navigation must stop).
+  Future<bool> _maybeShowUpdateDialog() async {
+    try {
+      final info = await sl<AppUpdateService>().check();
+      if (!mounted || info.type == AppUpdateType.none) return false;
+      await showAppUpdateDialog(context, info);
+      return info.type == AppUpdateType.forced;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<Map<String, dynamic>> _withStoreDetails(
@@ -61,30 +78,24 @@ class _SplashScreenState extends State<SplashScreen>
     try {
       final repo = sl<AuthRepository>();
       final token = await repo.getToken();
-      print('token:::==> $token');
       if (token != null && token.isNotEmpty) {
-        if (await _isTokenExpired()) {
-          await sl<AppSecureStorage>().clearToken();
-          if (!mounted) return;
-          Navigator.of(context).pushReplacementNamed(
-            AppRoutes.login,
-            arguments: {'showSessionExpired': true},
-          );
-          return;
-        }
-
-        // Debug print token from Splash (mask in production)
-        final masked = token.length > 12
-            ? '${token.substring(0, 6)}...${token.substring(token.length - 6)}'
-            : token;
-        // ignore: avoid_print
-        print('[AUTH][SPLASH] TOKEN: $masked');
-
         try {
           final details = await _withStoreDetails(await repo.getUserDetails());
           sl<SessionStore>().setUser(details);
+        } on DioException catch (e) {
+          if (!mounted) return;
+          if (e.response?.statusCode == 401) {
+            await sl<AppSecureStorage>().clearToken();
+            Navigator.of(context).pushReplacementNamed(
+              AppRoutes.login,
+              arguments: {'showSessionExpired': true},
+            );
+          } else {
+            // Network/timeout/etc. — keep the stored token, don't force logout.
+            Navigator.of(context).pushReplacementNamed(AppRoutes.login);
+          }
+          return;
         } catch (_) {
-          await sl<AppSecureStorage>().clearToken();
           if (!mounted) return;
           Navigator.of(context).pushReplacementNamed(AppRoutes.login);
           return;

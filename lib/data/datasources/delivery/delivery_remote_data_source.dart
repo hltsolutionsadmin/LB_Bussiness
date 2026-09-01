@@ -100,14 +100,19 @@ class DeliveryRemoteDataSource {
 
   Future<List<Map<String, dynamic>>> listAgentsByB2b({
     required String b2bUnitId,
+    int page = 0,
+    int size = 20,
   }) async {
     final token = await _storage.readToken();
     if (kDebugMode) {
-      debugPrint('[API] List Agents -> GET /api/agents/b2b/$b2bUnitId');
+      debugPrint(
+        '[API] List Agents -> GET /api/fulfillment/agents/b2b-unit/$b2bUnitId',
+      );
     }
 
     final res = await _client.dio.get(
-      '/api/agents/b2b/$b2bUnitId',
+      '/api/fulfillment/agents/b2b-unit/$b2bUnitId',
+      queryParameters: {'page': page, 'size': size},
       options: _authOptions(token),
     );
     return _extractList(res.data);
@@ -118,11 +123,11 @@ class DeliveryRemoteDataSource {
   }) async {
     final token = await _storage.readToken();
     if (kDebugMode) {
-      debugPrint('[API] Agent Details -> GET /api/agents/$agentId');
+      debugPrint('[API] Agent Details -> GET /api/fulfillment/agents/$agentId');
     }
 
     final res = await _client.dio.get(
-      '/api/agents/$agentId',
+      '/api/fulfillment/agents/$agentId',
       options: _authOptions(token),
     );
     final data = res.data;
@@ -199,26 +204,19 @@ class DeliveryRemoteDataSource {
     return _extractList(res.data);
   }
 
-  Future<void> blockPartner({required String partnerId}) async {
+  Future<void> setAgentStatus({
+    required String partnerId,
+    required String status,
+  }) async {
     final token = await _storage.readToken();
     if (kDebugMode) {
       debugPrint(
-        '[API] Deactivate Agent -> PUT /api/agents/$partnerId/deactivate',
+        '[API] Agent Status -> PUT /api/fulfillment/agents/$partnerId/status status=$status',
       );
     }
     await _client.dio.put(
-      '/api/agents/$partnerId/deactivate',
-      options: _authOptions(token),
-    );
-  }
-
-  Future<void> unblockPartner({required String partnerId}) async {
-    final token = await _storage.readToken();
-    if (kDebugMode) {
-      debugPrint('[API] Activate Agent -> PUT /api/agents/$partnerId/activate');
-    }
-    await _client.dio.put(
-      '/api/agents/$partnerId/activate',
+      '/api/fulfillment/agents/$partnerId/status',
+      data: {'status': status},
       options: _authOptions(token),
     );
   }

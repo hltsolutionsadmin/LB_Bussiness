@@ -186,12 +186,8 @@ class OrderDetailsDialog extends StatelessWidget {
 
               // Pricing Details
               _buildDetailSection('Pricing Details', [
-                if (order['subTotal'] != null &&
-                    (order['subTotal'] as num) > 0)
-                  _buildDetailRow(
-                    'Sub Total',
-                    '₹${order['subTotal'] ?? 0}',
-                  ),
+                if (order['subTotal'] != null && (order['subTotal'] as num) > 0)
+                  _buildDetailRow('Sub Total', '₹${order['subTotal'] ?? 0}'),
                 if (order['totalDiscount'] != null &&
                     (order['totalDiscount'] as num) > 0)
                   _buildDetailRow(
@@ -203,10 +199,7 @@ class OrderDetailsDialog extends StatelessWidget {
                   '₹${order['totalTaxAmount'] ?? 0}',
                 ),
                 if (order['taxInclusive'] == true)
-                  _buildDetailRow(
-                    'Tax Inclusive',
-                    'Yes',
-                  ),
+                  _buildDetailRow('Tax Inclusive', 'Yes'),
                 if (order['orderType'] != null &&
                     order['orderType'].toString().isNotEmpty)
                   _buildDetailRow(
@@ -223,7 +216,7 @@ class OrderDetailsDialog extends StatelessWidget {
               const SizedBox(height: 16),
 
               // Delivery Partner Information
-              if (order['deliveryPartnerId'] != null)
+              if ((order['deliveryPartnerId']?.toString() ?? '').isNotEmpty)
                 Column(
                   children: [
                     _buildDetailSection('Delivery Partner', [
@@ -233,11 +226,17 @@ class OrderDetailsDialog extends StatelessWidget {
                       ),
                       _buildDetailRow(
                         'Name',
-                        order['deliveryPartnerName']?.toString() ?? '-',
+                        (order['deliveryPartnerName']?.toString() ?? '')
+                                .isNotEmpty
+                            ? order['deliveryPartnerName'].toString()
+                            : '-',
                       ),
                       _buildDetailRow(
                         'Mobile',
-                        order['deliveryPartnerMobileNumber']?.toString() ?? '-',
+                        (order['deliveryPartnerMobileNumber']?.toString() ?? '')
+                                .isNotEmpty
+                            ? order['deliveryPartnerMobileNumber'].toString()
+                            : '-',
                       ),
                     ]),
                     const SizedBox(height: 16),
@@ -508,6 +507,7 @@ class OrderDetailsDialog extends StatelessWidget {
   }
 
   Widget _buildBusinessAddressRow(Map<String, dynamic> address) {
+    final name = address['name']?.toString() ?? '';
     final addressLine1 = address['addressLine1']?.toString() ?? '';
     final city = address['city']?.toString() ?? '';
     final state = address['state']?.toString() ?? '';
@@ -515,6 +515,7 @@ class OrderDetailsDialog extends StatelessWidget {
     final country = address['country']?.toString() ?? '';
 
     final fullAddress = [
+      if (name.isNotEmpty) name,
       if (addressLine1.isNotEmpty) addressLine1,
       if (city.isNotEmpty) city,
       if (state.isNotEmpty) state,
