@@ -7,6 +7,7 @@ import 'package:local_basket_business/domain/repositories/auth/auth_repository.d
 import 'package:local_basket_business/core/session/session_store.dart';
 import 'package:local_basket_business/core/storage/secure_storage.dart';
 import 'package:local_basket_business/core/services/app_update_service.dart';
+import 'package:local_basket_business/core/services/orders_poller.dart';
 import 'package:local_basket_business/presentation/widgets/app_update_dialog.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -109,6 +110,7 @@ class _SplashScreenState extends State<SplashScreen>
         }
         if (roles.contains('ROLE_STORE_ADMIN') ||
             roles.contains('ROLE_RESTAURANT_OWNER')) {
+          sl<OrdersPoller>().start();
           Navigator.of(context).pushReplacementNamed(AppRoutes.dashboard);
           return;
         }
@@ -141,14 +143,18 @@ class _SplashScreenState extends State<SplashScreen>
           opacity: _fadeAnimation,
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
-            children: const [
-              Icon(
-                Icons.storefront_rounded,
-                size: 72,
-                color: Color(0xFFFFD700),
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: Image.asset(
+                  'assets/jpg/ic_launcher.jpg',
+                  width: 72,
+                  height: 72,
+                  fit: BoxFit.cover,
+                ),
               ),
-              SizedBox(height: 16),
-              Text(
+              const SizedBox(height: 16),
+              const Text(
                 'Local Basket Business',
                 style: TextStyle(
                   fontSize: 22,
@@ -157,8 +163,8 @@ class _SplashScreenState extends State<SplashScreen>
                   letterSpacing: 0.8,
                 ),
               ),
-              SizedBox(height: 24),
-              SizedBox(
+              const SizedBox(height: 24),
+              const SizedBox(
                 width: 120,
                 height: 4,
                 child: LinearProgressIndicator(

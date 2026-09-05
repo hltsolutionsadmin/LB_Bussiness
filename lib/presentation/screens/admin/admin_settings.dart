@@ -3,6 +3,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:local_basket_business/widgets/glass_card.dart';
 import 'package:local_basket_business/theme/app_colors.dart';
 import 'package:local_basket_business/di/locator.dart';
+import 'package:local_basket_business/core/services/orders_poller.dart';
 import 'package:local_basket_business/core/session/session_store.dart';
 import 'package:local_basket_business/routes/app_router.dart';
 import 'package:local_basket_business/core/storage/secure_storage.dart';
@@ -142,6 +143,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                       await sl<AppSecureStorage>().clearToken();
                       // Clear in-memory session
                       sl<SessionStore>().clear();
+                      sl<OrdersPoller>().reset();
 
                       // Show feedback
                       ScaffoldMessenger.of(context).showSnackBar(

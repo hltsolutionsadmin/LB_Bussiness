@@ -63,6 +63,19 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
+  Future<void> updateFcmToken({
+    required String fcmToken,
+    String? deviceType,
+  }) {
+    return _remote.updateFcmToken(
+      FcmTokenRequest(
+        fcmToken: fcmToken,
+        deviceType: deviceType ?? 'ANDROID',
+      ),
+    );
+  }
+
+  @override
   Future<void> saveToken(String token) => _storage.saveToken(token);
 
   @override

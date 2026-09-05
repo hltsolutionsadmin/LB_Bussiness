@@ -58,6 +58,16 @@ class AuthCubit extends Cubit<AuthState> {
     emit(state.copyWith(status: AuthStatus.unauthenticated));
   }
 
+  /// Registers the device's FCM push token with the backend
+  /// (`PUT /api/users/me/fcm-token`). Safe to call after authentication;
+  /// failures are swallowed so they never block the UI.
+  Future<void> registerFcmToken(String fcmToken, {String deviceType = 'ANDROID'}) async {
+    if (fcmToken.isEmpty) return;
+    try {
+      await _repo.updateFcmToken(fcmToken: fcmToken, deviceType: deviceType);
+    } catch (_) {}
+  }
+
   Future<void> logout() async {
     emit(state.copyWith(status: AuthStatus.unauthenticated, user: null));
   }

@@ -6,6 +6,16 @@ class TriggerOtpRequest {
   };
 }
 
+class FcmTokenRequest {
+  final String fcmToken;
+  final String deviceType;
+  FcmTokenRequest({required this.fcmToken, this.deviceType = 'ANDROID'});
+  Map<String, dynamic> toJson() => {
+    'fcmToken': fcmToken,
+    'deviceType': deviceType,
+  };
+}
+
 class TriggerOtpResponse {
   final String otp;
   final String status;

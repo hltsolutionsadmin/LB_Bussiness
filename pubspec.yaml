@@ -60,6 +60,8 @@ flutter:
   assets:
     - .env
     - assets/sounds/hen.mp3
+    - assets/sounds/manasantha.mp3
+    - assets/jpg/ic_launcher.jpg
 
 flutter_launcher_icons:
   android: true

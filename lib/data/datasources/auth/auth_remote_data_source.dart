@@ -83,6 +83,24 @@ class AuthRemoteDataSource {
   /// refresh token is stored or the server rejects it.
   Future<String> refresh() => _client.refreshToken();
 
+  /// Registers/updates the current user's FCM push token via
+  /// `PUT /api/users/me/fcm-token`. Uses the stored access token unless an
+  /// explicit [bearer] is provided.
+  Future<void> updateFcmToken(FcmTokenRequest req, {String? bearer}) async {
+    final token = bearer ?? await _storage.readAccessToken();
+    if (kDebugMode) {
+      debugPrint('[API] Update FCM Token -> PUT ${_apiConfig.endpoints.fcmToken}');
+    }
+    final res = await _client.dio.put(
+      _apiConfig.endpoints.fcmToken,
+      data: req.toJson(),
+      options: _authOptions(bearer: token),
+    );
+    if (kDebugMode) {
+      debugPrint('[API] Update FCM Token Response: ${res.statusCode}');
+    }
+  }
+
   Future<Map<String, dynamic>> userDetails({String? bearer}) async {
     final token = bearer ?? await _storage.readAccessToken();
     if (kDebugMode) {
