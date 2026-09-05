@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:uuid/uuid.dart';
 import 'package:local_basket_business/routes/app_router.dart';
 import 'package:local_basket_business/di/locator.dart';
+import 'package:local_basket_business/core/services/orders_poller.dart';
 import 'package:local_basket_business/data/datasources/business/business_remote_data_source.dart';
 import 'package:local_basket_business/domain/repositories/auth/auth_repository.dart';
 import 'package:local_basket_business/core/session/session_store.dart';
@@ -134,6 +135,11 @@ class _OTPScreenState extends State<OTPScreen> {
         await repo.getUserDetails(),
       );
       session.setUser(userDetailsMap);
+
+      // Fresh session — drop any state from a previous account and kick off
+      // an immediate poll so a pending order alerts right away.
+      sl<OrdersPoller>().reset();
+      sl<OrdersPoller>().start();
 
       if (!mounted) return;
 
@@ -323,7 +329,7 @@ class _OTPScreenState extends State<OTPScreen> {
                                           const SizedBox(width: 10),
                                           const Expanded(
                                             child: Text(
-                                              'You may receive the OTP via a phone call instead of SMS',
+                                              'You will receive your OTP via SMS.',
                                               style: TextStyle(
                                                 fontSize: 13,
                                                 fontWeight: FontWeight.w500,

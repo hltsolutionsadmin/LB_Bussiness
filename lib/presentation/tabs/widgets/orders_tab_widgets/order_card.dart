@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:local_basket_business/core/utils/order_status.dart';
 import 'order_action_buttons.dart';
 
 class OrderCard extends StatelessWidget {
@@ -19,37 +20,8 @@ class OrderCard extends StatelessWidget {
     required this.onUpdateStatus,
   });
 
-  String _stage(String status) {
-    final s = status.toLowerCase();
-    if (s.contains('created') ||
-        s.contains('new') ||
-        s.contains('place') ||
-        s.contains('pending')) {
-      return 'new';
-    }
-    if (s.contains('confirm') || s.contains('accept')) return 'confirmed';
-    if (s.contains('prepar')) return 'preparing';
-    if (s.contains('ready')) return 'ready';
-    if (s.contains('picked')) return 'picked_up';
-    if (s.contains('delivered')) return 'delivered';
-    if (s.contains('in_delivery')) return 'in_delivery';
-    return s;
-  }
-
-  String _label(String status) {
-    return status.isEmpty
-        ? '—'
-        : status
-              .toString()
-              .toLowerCase()
-              .replaceAll('_', ' ')
-              .split(' ')
-              .map((w) => w.isEmpty ? w : (w[0].toUpperCase() + w.substring(1)))
-              .join(' ');
-  }
-
   Color _getStatusColor(String status) {
-    switch (_stage(status)) {
+    switch (merchantStage(status)) {
       case 'new':
         return const Color(0xFF6366F1); // indigo
       case 'confirmed':
@@ -58,12 +30,8 @@ class OrderCard extends StatelessWidget {
         return const Color(0xFFF59E0B); // amber
       case 'ready':
         return const Color(0xFF10B981); // emerald
-      case 'picked_up':
-        return const Color(0xFF8B5CF6); // violet
-      case 'in_delivery':
-        return const Color(0xFF06B6D4); // cyan
-      case 'delivered':
-        return const Color(0xFF10B981); // emerald
+      case 'cancelled':
+        return const Color(0xFFEF4444); // red
       default:
         return Colors.grey;
     }
@@ -181,7 +149,7 @@ class OrderCard extends StatelessWidget {
           const SizedBox(width: 6),
           Flexible(
             child: Text(
-              _label(status),
+              merchantStatusLabel(status),
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w700,

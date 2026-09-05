@@ -1,22 +1,49 @@
 import 'dart:async';
+import 'dart:developer' as dev;
 import 'package:audioplayers/audioplayers.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:local_basket_business/core/session/session_store.dart';
+import 'package:local_basket_business/core/utils/order_status.dart';
 import 'package:local_basket_business/domain/repositories/orders/orders_repository.dart';
-import 'package:local_basket_business/presentation/tabs/widgets/orders_tab_widgets/order_details_dialog.dart';
+import 'package:local_basket_business/presentation/widgets/new_order_alert_dialog.dart';
 import 'package:local_basket_business/routes/app_router.dart';
 
+/// Polls the store's orders and, whenever a fresh order is waiting for the
+/// merchant, plays a looping alert sound and shows a blocking popup — from
+/// anywhere in the app.
+void _log(String m) {
+  // Not throttled like debugPrint, and visible in `flutter run` / logcat.
+  dev.log(m, name: 'OrdersPoller');
+  // ignore: avoid_print
+  print('>>> ORDERS_POLLER: $m');
+}
+
 class OrdersPoller {
-  OrdersPoller(this._repo, this._sessionStore);
+  OrdersPoller(this._repo, this._sessionStore) {
+    _log('constructed');
+  }
 
   final OrdersRepository _repo;
   final SessionStore _sessionStore;
 
   Timer? _timer;
   final AudioPlayer _audioPlayer = AudioPlayer();
-  Set<String> _previousOrderIds = <String>{};
-  bool _isInitial = true;
+  bool _audioContextSet = false;
+
+  /// Ids we've already popped for, so an un-accepted order doesn't re-trigger
+  /// the dialog on every poll.
+  final Set<String> _handledOrderIds = <String>{};
+
+  /// orderId → the last status the merchant set from this app (popup or the
+  /// Orders list). Once set, this wins over whatever the backend reports, so
+  /// the card walks CONFIRMED → PREPARING → READY at the merchant's pace and
+  /// isn't yanked ahead by auto-assignment. Shared with the Orders tab.
+  final Map<String, String> merchantStatus = <String, String>{};
+
+  void recordMerchantStatus(String orderId, String status) {
+    if (orderId.isNotEmpty) merchantStatus[orderId] = status;
+  }
   bool _showingDialog = false;
   bool _soundPlaying = false;
   bool _isTickInFlight = false;
@@ -24,7 +51,14 @@ class OrdersPoller {
   static const Duration defaultInterval = Duration(seconds: 15);
 
   void start({Duration interval = defaultInterval}) {
+    _log('start() timer=${_timer != null}');
+    _isTickInFlight = false;
+    _showingDialog = false;
     _timer ??= Timer.periodic(interval, (_) => _tick());
+    // Run one now and one just after the first frame, so a pending order is
+    // caught without waiting a full interval and once the navigator exists.
+    _tick();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _tick());
   }
 
   void stop() {
@@ -32,146 +66,186 @@ class OrdersPoller {
     _timer = null;
   }
 
+  /// Run a check immediately (e.g. right after the Orders list refreshes).
+  void checkNow() {
+    _log('checkNow()');
+    _tick();
+  }
+
+  /// Direct entry point for a screen that already has the fresh list + a live
+  /// [BuildContext] (belt-and-suspenders for the Orders screen).
+  void alertFromScreen(List<Map<String, dynamic>> items, BuildContext context) {
+    try {
+      final awaiting = items
+          .where((o) => isAwaitingAcceptance(_statusOf(o)))
+          .toList()
+        ..sort((a, b) => _createdMillis(b).compareTo(_createdMillis(a)));
+      _log('alertFromScreen awaiting=${awaiting.length} showing=$_showingDialog');
+      final unhandled = awaiting
+          .where((o) => !_handledOrderIds.contains(_orderId(o)))
+          .toList();
+      if (unhandled.isNotEmpty && !_showingDialog) {
+        _presentAlert(unhandled.first, context);
+      }
+    } catch (e) {
+      _log('alertFromScreen error: $e');
+    }
+  }
+
+  /// Clears per-session state — call on logout.
+  void reset() {
+    _handledOrderIds.clear();
+    merchantStatus.clear();
+    _showingDialog = false;
+    _stopSound();
+  }
+
+  String _orderId(Map<String, dynamic> o) =>
+      (o['id'] ?? o['orderId'] ?? '').toString();
+
+  String _statusOf(Map<String, dynamic> o) {
+    final local = merchantStatus[_orderId(o)];
+    if (local != null) return local;
+    return (o['orderStatus'] ?? o['status'] ?? '').toString();
+  }
+
+  int _createdMillis(Map<String, dynamic> o) {
+    final raw = o['createdDate'] ?? o['createdAt'] ?? o['created'];
+    return DateTime.tryParse(raw?.toString() ?? '')?.millisecondsSinceEpoch ?? 0;
+  }
+
   Future<void> _tick() async {
     if (_isTickInFlight) return;
     _isTickInFlight = true;
-    final storeId = _sessionStore.storeId;
-    // Gate purely on storeId, same as the Orders tab's own refresh — the
-    // isStoreVendor role check was blocking this poller even for sessions
-    // where the Orders list itself resolves and loads correctly.
-    if (storeId.isEmpty) {
-      _isTickInFlight = false;
-      return;
-    }
-
     try {
+      final storeId = _sessionStore.storeId;
+      if (storeId.isEmpty) {
+        _log('skip: storeId empty');
+        return;
+      }
+
       final page = await _repo.getOrdersByStore(
         storeId: storeId,
         page: 0,
         size: 50,
       );
+      final items = page.items;
 
-      final currentIds = page.items.map((e) => e['id'].toString()).toSet();
-      bool isNewStage(Map<String, dynamic> o) {
-        final s = (o['orderStatus']?.toString() ?? '').toLowerCase();
-        return s.contains('created') ||
-            s.contains('new') ||
-            s.contains('place') ||
-            s.contains('pending');
+      final awaiting = items
+          .where((o) => isAwaitingAcceptance(_statusOf(o)))
+          .toList()
+        ..sort((a, b) => _createdMillis(b).compareTo(_createdMillis(a)));
+
+      _log(
+        'store=$storeId fetched=${items.length} '
+        'awaiting=${awaiting.length} showing=$_showingDialog '
+        'handled=${_handledOrderIds.length} '
+        'statuses=${items.take(8).map(_statusOf).toList()}',
+      );
+
+      final unhandled = awaiting
+          .where((o) => !_handledOrderIds.contains(_orderId(o)))
+          .toList();
+
+      if (unhandled.isNotEmpty && !_showingDialog) {
+        _presentAlert(unhandled.first);
+      } else if (awaiting.isEmpty && !_showingDialog) {
+        await _stopSound();
       }
 
-      if (!_isInitial) {
-        final newOrders = page.items
-            .where((o) => !_previousOrderIds.contains(o['id'].toString()))
-            .toList();
-        final hasAnyNewStage = page.items.any(isNewStage);
-        if (newOrders.isNotEmpty) {
-          await _playLoop();
-          if (!_showingDialog) {
-            _showingDialog = true;
-            final order = newOrders.first;
-            final ctx = navigatorKey.currentState?.overlay?.context;
-            if (ctx != null) {
-              try {
-                // ignore: use_build_context_synchronously
-                showDialog(
-                  context: ctx,
-                  barrierDismissible: false,
-                  builder: (_) => OrderDetailsDialog(
-                    order: order,
-                    isNewOrder: true,
-                    onAccept: () async {
-                      await _stopSound();
-                      try {
-                        await _repo.updateOrderStatus(
-                          orderId: order['id']?.toString() ?? '',
-                          status: 'CONFIRMED',
-                        );
-                      } catch (e) {
-                        if (kDebugMode) {
-                          debugPrint('[OrdersPoller] accept failed: $e');
-                        }
-                      } finally {
-                        navigatorKey.currentState?.pop();
-                        _showingDialog = false;
-                      }
-                    },
-                    onReject: () async {
-                      await _stopSound();
-                      try {
-                        await _repo.updateOrderStatus(
-                          orderId: order['id']?.toString() ?? '',
-                          status: 'REJECTED',
-                        );
-                      } catch (e) {
-                        if (kDebugMode) {
-                          debugPrint('[OrdersPoller] reject failed: $e');
-                        }
-                      } finally {
-                        navigatorKey.currentState?.pop();
-                        _showingDialog = false;
-                      }
-                    },
-                  ),
-                ).then((_) async {
-                  _showingDialog = false;
-                  await _stopSound();
-                });
-              } catch (e) {
-                // showDialog itself failed synchronously (e.g. stale context) —
-                // don't leave the flag stuck, or every future order goes silent.
-                if (kDebugMode) {
-                  debugPrint('[OrdersPoller] show dialog failed: $e');
-                }
-                await _stopSound();
-                _showingDialog = false;
-              }
-            } else {
-              // If no context yet, stop the sound to avoid looping indefinitely
-              await _stopSound();
-              _showingDialog = false;
-            }
-          }
-        }
-        // If there are no orders in a 'new' stage anymore, stop any playing sound
-        if (!hasAnyNewStage) {
-          await _stopSound();
-        }
-      }
-
-      _previousOrderIds = currentIds;
-      _isInitial = false;
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('[OrdersPoller] tick error: $e');
-      }
+      final currentIds = items.map(_orderId).toSet();
+      _handledOrderIds.removeWhere((id) => !currentIds.contains(id));
+    } catch (e, st) {
+      _log('tick error: $e\n$st');
     } finally {
       _isTickInFlight = false;
     }
   }
 
+  void _presentAlert(Map<String, dynamic> order, [BuildContext? context]) {
+    final ctx = context ??
+        navigatorKey.currentState?.overlay?.context ??
+        navigatorKey.currentContext;
+    if (ctx == null) {
+      _log('no context yet — will retry next tick');
+      return;
+    }
+
+    final orderId = _orderId(order);
+    _handledOrderIds.add(orderId);
+    _showingDialog = true;
+    _playLoop();
+
+    final chain =
+        nextOrderStatuses(_statusOf(order)) ?? const ['CONFIRMED', 'PREPARING'];
+
+    Future<void> accept() async {
+      await _stopSound();
+      try {
+        for (final s in chain) {
+          await _repo.updateOrderStatus(orderId: orderId, status: s);
+        }
+        recordMerchantStatus(orderId, chain.last);
+        _log('accepted $orderId -> ${chain.join(",")}');
+      } catch (e) {
+        _log('accept failed: $e');
+        _handledOrderIds.remove(orderId); // let it re-alert
+      } finally {
+        if (navigatorKey.currentState?.canPop() ?? false) {
+          navigatorKey.currentState?.pop();
+        }
+        _showingDialog = false;
+      }
+    }
+
+    _log('showing popup for $orderId (${chain.join(",")})');
+    showDialog<void>(
+      context: ctx,
+      barrierDismissible: false,
+      useRootNavigator: true,
+      builder: (_) => PopScope(
+        canPop: false,
+        child: NewOrderAlertDialog(
+          order: order,
+          acceptLabel: 'Accept Order',
+          onAccept: accept,
+        ),
+      ),
+    ).whenComplete(() {
+      _showingDialog = false;
+      _stopSound();
+    });
+  }
+
   Future<void> _playLoop() async {
+    if (_soundPlaying) return;
+    if (!_audioContextSet) {
+      _audioContextSet = true;
+      try {
+        await AudioPlayer.global.setAudioContext(
+          AudioContextConfig(respectSilence: false).build(),
+        );
+      } catch (e) {
+        _log('setAudioContext failed: $e');
+      }
+    }
     try {
       await _audioPlayer.setReleaseMode(ReleaseMode.loop);
-      await _audioPlayer.play(AssetSource('sounds/hen.mp3'));
+      await _audioPlayer.setVolume(1.0);
+      await _audioPlayer.play(AssetSource('sounds/manasantha.mp3'));
       _soundPlaying = true;
+      _log('sound started');
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('[OrdersPoller] sound play failed: $e');
-      }
+      _log('sound play failed: $e');
+      HapticFeedback.heavyImpact();
     }
   }
 
   Future<void> _stopSound() async {
+    if (!_soundPlaying) return;
     try {
-      if (_soundPlaying) {
-        await _audioPlayer.stop();
-        _soundPlaying = false;
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('[OrdersPoller] sound stop failed: $e');
-      }
-    }
+      await _audioPlayer.stop();
+    } catch (_) {}
+    _soundPlaying = false;
   }
 }

@@ -3,6 +3,7 @@ import 'package:local_basket_business/core/utils/responsive.dart';
 import 'package:local_basket_business/presentation/screens/restaurant/mobile_login.dart';
 import 'package:local_basket_business/core/session/session_store.dart';
 import 'package:local_basket_business/di/locator.dart';
+import 'package:local_basket_business/core/services/orders_poller.dart';
 import 'package:local_basket_business/domain/repositories/products/product_repository.dart';
 import 'package:local_basket_business/presentation/screens/terms/terms_and_conditions.dart';
 import 'package:local_basket_business/core/storage/secure_storage.dart';
@@ -894,6 +895,10 @@ class _ProfileTabState extends State<ProfileTab> {
 
                   try {
                     sl<SessionStore>().clear();
+                  } catch (_) {}
+
+                  try {
+                    sl<OrdersPoller>().reset();
                   } catch (_) {}
 
                   if (!context.mounted) return;

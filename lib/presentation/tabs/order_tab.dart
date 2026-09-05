@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:local_basket_business/core/utils/responsive.dart';
 import 'package:local_basket_business/di/locator.dart';
 import 'package:local_basket_business/core/session/session_store.dart';
+import 'package:local_basket_business/core/services/orders_poller.dart';
+import 'package:local_basket_business/core/utils/order_status.dart';
 import 'package:local_basket_business/domain/repositories/orders/orders_repository.dart';
 import 'widgets/orders_tab_widgets/order_filters.dart';
 import 'widgets/orders_tab_widgets/order_card.dart';
@@ -159,6 +161,7 @@ class _OrdersTabState extends State<OrdersTab> {
           }
           _hasNext = pageData.hasNext;
           _page = 1; // Next page after refresh
+          _applyLocalStatus();
         });
       }
     } catch (e) {
@@ -166,6 +169,15 @@ class _OrdersTabState extends State<OrdersTab> {
       debugPrint('Silent refresh failed: $e');
     } finally {
       _silentRefreshing = false;
+    }
+
+    // Evaluate against the freshly loaded list right away, using this screen's
+    // live context so the popup is guaranteed to have somewhere to attach.
+    if (mounted) {
+      sl<OrdersPoller>().alertFromScreen(
+        List<Map<String, dynamic>>.from(_orders),
+        context,
+      );
     }
   }
 
@@ -183,21 +195,18 @@ class _OrdersTabState extends State<OrdersTab> {
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  String _stage(String status) {
-    final s = status.toLowerCase();
-    if (s.contains('created') ||
-        s.contains('new') ||
-        s.contains('place') ||
-        s.contains('pending')) {
-      return 'new';
+  String _stage(String status) => merchantStage(status);
+
+  /// The merchant's own progression lives on the (singleton) OrdersPoller so
+  /// the popup and this list agree. Once the merchant has acted, their choice
+  /// is authoritative — the backend status (even ASSIGNED_TO_DELIVERY_PARTNER)
+  /// is ignored.
+  void _applyLocalStatus() {
+    final local = sl<OrdersPoller>().merchantStatus;
+    for (final o in _orders) {
+      final s = local[o['id']?.toString()];
+      if (s != null) o['orderStatus'] = s;
     }
-    if (s.contains('confirm') || s.contains('accept')) return 'confirmed';
-    if (s.contains('prepar')) return 'preparing';
-    if (s.contains('ready')) return 'ready';
-    if (s.contains('picked')) return 'picked_up';
-    if (s.contains('delivered')) return 'delivered';
-    if (s.contains('in_delivery')) return 'in_delivery';
-    return s;
   }
 
   Future<void> _loadPage({bool refresh = false}) async {
@@ -238,7 +247,15 @@ class _OrdersTabState extends State<OrdersTab> {
               .toSet();
           _isInitialLoad = false;
         }
+        _applyLocalStatus();
       });
+
+      if (mounted && _page <= 1) {
+        sl<OrdersPoller>().alertFromScreen(
+          List<Map<String, dynamic>>.from(pageData.items),
+          context,
+        );
+      }
     } catch (e) {
       if (mounted) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -260,9 +277,13 @@ class _OrdersTabState extends State<OrdersTab> {
     }
   }
 
+  /// One handler for the single button a card ever shows. The chain of
+  /// backend statuses is derived from the order's *current* stage, not from
+  /// the button — "Accept" pushes CONFIRMED→PREPARING, "Mark as Ready" pushes
+  /// READY.
   Future<void> _updateOrderStatus(
     Map<String, dynamic> order,
-    String newStatus,
+    String _,
   ) async {
     final repo = sl<OrdersRepository>();
     final orderId = order['id']?.toString();
@@ -271,20 +292,25 @@ class _OrdersTabState extends State<OrdersTab> {
       return;
     }
 
+    final current = (order['orderStatus'] ?? order['status'] ?? '').toString();
+    final chain = nextOrderStatuses(current);
+    if (chain == null || chain.isEmpty) return;
+
     if (mounted) {
       setState(() => _updatingOrderIds.add(orderId));
     }
 
     try {
-      await repo.updateOrderStatus(
-        orderId: orderId,
-        status: newStatus,
-      );
+      for (final s in chain) {
+        await repo.updateOrderStatus(orderId: orderId, status: s);
+      }
       if (!mounted) return;
+      final applied = chain.last;
+      sl<OrdersPoller>().recordMerchantStatus(orderId, applied);
       setState(() {
-        order['orderStatus'] = newStatus;
+        order['orderStatus'] = applied;
       });
-      _showSnackBar('Updated to ${_label(newStatus)}');
+      _showSnackBar('Updated to ${merchantStatusLabel(applied)}');
     } catch (e) {
       _showSnackBar('Failed to update: $e');
     } finally {
@@ -292,18 +318,6 @@ class _OrdersTabState extends State<OrdersTab> {
         setState(() => _updatingOrderIds.remove(orderId));
       }
     }
-  }
-
-  String _label(String status) {
-    return status.isEmpty
-        ? '—'
-        : status
-              .toString()
-              .toLowerCase()
-              .replaceAll('_', ' ')
-              .split(' ')
-              .map((w) => w.isEmpty ? w : (w[0].toUpperCase() + w.substring(1)))
-              .join(' ');
   }
 
   void _showOrderDetailsDialog(

@@ -34,6 +34,9 @@ class DioClient {
             if (kDebugMode) {
               debugPrint('[DIO] baseUrl=${_dio.options.baseUrl}');
               debugPrint('[REQ] ${options.method} ${options.uri}');
+              debugPrint(
+                '[REQ] Bearer: ${options.headers['Authorization'] ?? '<none>'}',
+              );
               if (options.data != null) debugPrint('DATA: ${options.data}');
             }
             handler.next(options);
@@ -184,7 +187,10 @@ class DioClient {
       await _storage.saveTokenType(tokenType);
     }
 
-    if (kDebugMode) debugPrint('[DIO] token rotated via /auth/refresh');
+    if (kDebugMode) {
+      debugPrint('[DIO] token rotated via /auth/refresh');
+      debugPrint('[DIO] new Bearer: $newAccessToken');
+    }
     return newAccessToken;
   }
 

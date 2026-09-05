@@ -14,6 +14,11 @@ abstract class AuthRepository {
     required String deviceId,
   });
   Future<Map<String, dynamic>> getUserDetails({String? bearer});
+
+  Future<void> updateFcmToken({
+    required String fcmToken,
+    String? deviceType,
+  });
   Future<void> saveToken(String token);
   Future<String?> getToken();
 }

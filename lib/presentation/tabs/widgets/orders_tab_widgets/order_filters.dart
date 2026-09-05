@@ -27,7 +27,14 @@ class OrderFilters extends StatelessWidget {
         ],
       ),
       child: Row(
-        children: ['all', 'new', 'preparing', 'ready', 'picked_up'].map((filter) {
+        children: const {
+          'all': 'All',
+          'new': 'New',
+          'confirmed': 'Confirmed',
+          'preparing': 'Preparing',
+          'ready': 'Ready',
+        }.entries.map((entry) {
+          final filter = entry.key;
           final isSelected = selectedFilter == filter;
           return Expanded(
             child: GestureDetector(
@@ -41,7 +48,7 @@ class OrderFilters extends StatelessWidget {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
-                  filter[0].toUpperCase() + filter.substring(1),
+                  entry.value,
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: isSelected ? Colors.white : const Color(0xFF6B7280),

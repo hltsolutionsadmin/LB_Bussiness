@@ -12,6 +12,7 @@ class ApiConfig {
     login: '/auth/otp/login',<<<<<<< new_domain_dashboard
     refresh: '/auth/refresh',
     userDetails: '/api/users/me',
+    fcmToken: '/api/users/me/fcm-token',
   );
 }
 
@@ -21,10 +22,12 @@ class ApiEndpoints {
     required this.login,
     required this.refresh,main
     required this.userDetails,
+    required this.fcmToken,
   });
 
   final String triggerOtp;
   final String login;
   final String refresh;
   final String userDetails;
+  final String fcmToken;
 }
