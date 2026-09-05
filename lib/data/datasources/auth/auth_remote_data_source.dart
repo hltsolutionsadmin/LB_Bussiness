@@ -74,7 +74,6 @@ class AuthRemoteDataSource {
         .millisecondsSinceEpoch;
     await _storage.saveTokenExpiry(expiresAt);
     await _storage.saveTokenType(loginResponse.tokenType);
-
     return loginResponse.accessToken;
   }
 

@@ -24,7 +24,6 @@ class AppSecureStorage {
     final value = await _storage.read(key: _expiresInKey);
     return value != null ? int.tryParse(value) : null;
   }
-
   Future<void> saveTokenExpiry(int expiryMs) =>
       _storage.write(key: _tokenExpiryKey, value: expiryMs.toString());
 
@@ -32,7 +31,6 @@ class AppSecureStorage {
     final value = await _storage.read(key: _tokenExpiryKey);
     return value != null ? int.tryParse(value) : null;
   }
-
   Future<void> saveTokenType(String tokenType) =>
       _storage.write(key: _tokenTypeKey, value: tokenType);
   Future<String?> readTokenType() => _storage.read(key: _tokenTypeKey);

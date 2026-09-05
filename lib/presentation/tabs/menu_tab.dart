@@ -99,7 +99,6 @@ class _MenuTabState extends State<MenuTab> {
           break;
         }
       }
-
       if (updatedItem != null && mounted) {
         setState(() {
           // Update the item in the list
@@ -108,7 +107,6 @@ class _MenuTabState extends State<MenuTab> {
             _items[itemIndex] = updatedItem!;
           }
         });
-
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Product updated successfully')),
         );

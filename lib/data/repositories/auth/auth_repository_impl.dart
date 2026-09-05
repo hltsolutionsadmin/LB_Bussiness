@@ -26,6 +26,7 @@ class AuthRepositoryImpl implements AuthRepository {
       TriggerOtpRequest(
         primaryContact: _normalizePrimaryContact(primaryContact),
       ),
+
     );
   }
 
@@ -51,6 +52,7 @@ class AuthRepositoryImpl implements AuthRepository {
       LoginRequest(
         otp: otp,
         primaryContact: _normalizePrimaryContact(primaryContact),
+
         fullName: fullName,
         deviceId: deviceId,
       ),

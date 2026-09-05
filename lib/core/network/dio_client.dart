@@ -21,7 +21,6 @@ class DioClient {
         headers: {'Content-Type': 'application/json'},
       ),
     );
-
     _dio
       ..options = BaseOptions(
         baseUrl: normalizedBaseUrl,

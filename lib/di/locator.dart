@@ -36,7 +36,7 @@ Future<void> setupLocator() async {
     baseUrl: baseUrl,
     endpoints: ApiConfig.endpointsV1,
   ));
-  
+ 
   sl.registerLazySingleton<AppSecureStorage>(() => AppSecureStorage());
   sl.registerLazySingleton<DioClient>(
     () => DioClient(sl(), sl<ApiConfig>().baseUrl, sl<AppSecureStorage>()),
