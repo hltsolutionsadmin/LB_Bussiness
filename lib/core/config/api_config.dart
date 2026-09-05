@@ -9,7 +9,8 @@ class ApiConfig {
 
   static const ApiEndpoints endpointsV1 = ApiEndpoints(
     triggerOtp: '/auth/otp/send',
-    login: '/auth/otp/login',
+    login: '/auth/otp/login',<<<<<<< new_domain_dashboard
+    refresh: '/auth/refresh',
     userDetails: '/api/users/me',
   );
 }
@@ -18,10 +19,12 @@ class ApiEndpoints {
   const ApiEndpoints({
     required this.triggerOtp,
     required this.login,
+    required this.refresh,main
     required this.userDetails,
   });
 
   final String triggerOtp;
   final String login;
+  final String refresh;
   final String userDetails;
 }

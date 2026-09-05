@@ -18,6 +18,9 @@ class _HomeTabState extends State<HomeTab> with SingleTickerProviderStateMixin {
   late Animation<double> _anim;
   bool _enabled = true;
   int? _businessId;
+  String _storeId = '';
+  String _storeName = '';
+  String _storeCode = '';
 
   bool _loadingKpi = false;
   Map<String, dynamic>? _kpi;
@@ -48,9 +51,17 @@ class _HomeTabState extends State<HomeTab> with SingleTickerProviderStateMixin {
         final dynamic id = b2b['id'];
         if (id is num) _businessId = id.toInt();
         if (id is String) _businessId = int.tryParse(id);
-        final en = b2b['enabled'];
-        if (en is bool) _enabled = en;
       }
+      final store = (sess['store'] is Map<String, dynamic>)
+          ? sess['store'] as Map<String, dynamic>
+          : const <String, dynamic>{};
+      _storeId = (sess['storeId']?.toString().isNotEmpty ?? false)
+          ? sess['storeId'].toString()
+          : store['id']?.toString() ?? '';
+      _storeName = store['name']?.toString() ?? '';
+      _storeCode = store['code']?.toString() ?? '';
+      final en = store['active'];
+      if (en is bool) _enabled = en;
     }
 
     _loadKpi();
@@ -232,11 +243,11 @@ class _HomeTabState extends State<HomeTab> with SingleTickerProviderStateMixin {
                         Switch(
                           value: _enabled,
                           onChanged: (value) async {
-                            if (_businessId == null) {
+                            if (_storeId.isEmpty) {
                               if (!mounted) return;
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
-                                  content: Text('Business ID not found'),
+                                  content: Text('Store ID not found'),
                                 ),
                               );
                               return;
@@ -245,9 +256,11 @@ class _HomeTabState extends State<HomeTab> with SingleTickerProviderStateMixin {
                             setState(() => _enabled = value);
                             try {
                               final repo = sl<BusinessRepository>();
-                              await repo.setBusinessEnabled(
-                                businessId: _businessId!,
-                                enabled: value,
+                              await repo.setStoreActive(
+                                storeId: _storeId,
+                                name: _storeName,
+                                code: _storeCode,
+                                active: value,
                               );
                               if (!mounted) return;
                               ScaffoldMessenger.of(context).showSnackBar(

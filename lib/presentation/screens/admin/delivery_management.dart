@@ -5,6 +5,7 @@ import 'package:local_basket_business/widgets/glass_card.dart';
 import 'package:local_basket_business/widgets/search_bar_widget.dart';
 import 'package:local_basket_business/presentation/screens/admin/add_delivery_partner_screen.dart';
 import 'package:get_it/get_it.dart';
+import 'package:local_basket_business/core/session/session_store.dart';
 import 'package:local_basket_business/data/datasources/delivery/delivery_remote_data_source.dart';
 
 class DeliveryManagementScreen extends StatefulWidget {
@@ -20,8 +21,9 @@ class _DeliveryManagementScreenState extends State<DeliveryManagementScreen> {
   String _searchQuery = '';
   String _selectedFilter = 'All';
 
-  final List<String> _filters = const ['All', 'Active', 'Available'];
+  final List<String> _filters = const ['All', 'Active', 'Pending', 'Available'];
   final List<_Partner> _all = [];
+  final Set<String> _updatingPartnerIds = {};
   bool _loading = true;
 
   @override
@@ -34,14 +36,11 @@ class _DeliveryManagementScreenState extends State<DeliveryManagementScreen> {
     setState(() => _loading = true);
     try {
       final ds = GetIt.I<DeliveryRemoteDataSource>();
-      List<Map<String, dynamic>> list;
-      if (_selectedFilter == 'Active') {
-        list = await ds.listActivePartnersPaged(page: 0, size: 50);
-      } else if (_selectedFilter == 'Available') {
-        list = await ds.listAvailablePartners(page: 0, size: 50);
-      } else {
-        list = await ds.listPartnersPaged(page: 0, size: 50);
+      final b2bUnitId = GetIt.I<SessionStore>().b2bUnitId;
+      if (b2bUnitId.isEmpty) {
+        throw StateError('B2B unit ID not found');
       }
+      final list = await ds.listAgentsByB2b(b2bUnitId: b2bUnitId);
 
       String str(dynamic v) => v?.toString() ?? '';
       bool toBool(dynamic v) {
@@ -50,21 +49,34 @@ class _DeliveryManagementScreenState extends State<DeliveryManagementScreen> {
         return s == 'true' || s == '1' || s == 'yes';
       }
 
-      int toInt(dynamic v) {
-        if (v is num) return v.toInt();
-        return int.tryParse(str(v)) ?? 0;
-      }
-
       final mapped = list.map<_Partner>((m) {
-        final id = toInt(m['id']);
-        final name = str(m['fullName'] ?? m['name']).isNotEmpty
-            ? str(m['fullName'] ?? m['name'])
-            : (id != 0 ? 'Partner #$id' : 'Partner');
-        final vehicleNumber = str(m['vehicleNumber']);
+        final id = str(m['agentId'] ?? m['id'] ?? m['deliveryPartnerId']);
+        final firstName = str(m['firstName']);
+        final lastName = str(m['lastName']);
+        final fullNameFromParts = [
+          firstName,
+          lastName,
+        ].where((p) => p.isNotEmpty).join(' ');
+        final nameValue = str(m['fullName'] ?? m['name'] ?? m['displayName']);
+        final name = fullNameFromParts.isNotEmpty
+            ? fullNameFromParts
+            : nameValue.isNotEmpty
+            ? nameValue
+            : (id.isNotEmpty ? 'Partner ${_shortId(id)}' : 'Partner');
+        final vehicleNumber = str(
+          m['vehicleNumber'] ?? m['vehicleRegistration'],
+        );
         final mobileNumber = str(m['mobileNumber'] ?? m['primaryContact']);
         final available = toBool(m['available']);
-        final active = toBool(m['active'] ?? m['enabled']);
-        final status = active ? 'Active' : 'Inactive';
+        final apiStatus = str(m['status']);
+        final active =
+            toBool(m['active'] ?? m['enabled']) ||
+            apiStatus.toUpperCase() == 'ACTIVE';
+        final status = active
+            ? 'Active'
+            : apiStatus == 'PENDING_VERIFICATION'
+            ? 'Pending'
+            : 'Inactive';
         return _Partner(
           id: id,
           name: name,
@@ -150,10 +162,15 @@ class _DeliveryManagementScreenState extends State<DeliveryManagementScreen> {
                         itemCount: partners.length,
                         itemBuilder: (context, index) => _PartnerCard(
                           data: partners[index],
-                          onTap: () => widget.onNavigate(
+                          onTap: () => _showPartnerDetails(partners[index]),
+                          onReports: () => widget.onNavigate(
                             'delivery-reports:${partners[index].id}',
                           ),
-                          onUpdated: _loadPartners,
+                          isUpdating: _updatingPartnerIds.contains(
+                            partners[index].id,
+                          ),
+                          onActiveChanged: (active) =>
+                              _setPartnerActive(partners[index], active),
                           index: index,
                         ),
                       ),
@@ -175,7 +192,11 @@ class _DeliveryManagementScreenState extends State<DeliveryManagementScreen> {
           .toList();
     }
     if (_selectedFilter != 'All') {
-      list = list.where((p) => p.status == _selectedFilter).toList();
+      if (_selectedFilter == 'Available') {
+        list = list.where((p) => p.available).toList();
+      } else {
+        list = list.where((p) => p.status == _selectedFilter).toList();
+      }
     }
     return list;
   }
@@ -193,7 +214,6 @@ class _DeliveryManagementScreenState extends State<DeliveryManagementScreen> {
               selected: isSelected,
               onSelected: (_) {
                 setState(() => _selectedFilter = filter);
-                _loadPartners();
               },
               backgroundColor: AppColors.glass,
               selectedColor: AppColors.orange600,
@@ -208,6 +228,88 @@ class _DeliveryManagementScreenState extends State<DeliveryManagementScreen> {
           );
         }).toList(),
       ),
+    );
+  }
+
+  Future<void> _setPartnerActive(_Partner partner, bool active) async {
+    if (partner.id.isEmpty || _updatingPartnerIds.contains(partner.id)) {
+      return;
+    }
+
+    final old = partner.active;
+    if (old == active) return;
+
+    if (!active) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Inactive delivery partner?'),
+          content: const Text(
+            'Are you sure you want to inactive the delivery partner?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('No'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Yes'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+    }
+
+    setState(() {
+      partner.active = active;
+      partner.status = active ? 'Active' : 'Inactive';
+      _updatingPartnerIds.add(partner.id);
+    });
+
+    try {
+      final ds = GetIt.I<DeliveryRemoteDataSource>();
+      await ds.setAgentStatus(
+        partnerId: partner.id,
+        status: active ? 'ACTIVE' : 'INACTIVE',
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(active ? 'Partner activated' : 'Partner inactivated'),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        partner.active = old;
+        partner.status = old ? 'Active' : 'Inactive';
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to update partner status')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _updatingPartnerIds.remove(partner.id));
+      }
+    }
+  }
+
+  void _showPartnerDetails(_Partner partner) {
+    if (partner.id.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Delivery partner id not found')),
+      );
+      return;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => _PartnerDetailsSheet(partner: partner),
     );
   }
 }
@@ -263,141 +365,167 @@ class _EmptyState extends StatelessWidget {
 class _PartnerCard extends StatelessWidget {
   final _Partner data;
   final VoidCallback onTap;
-  final VoidCallback onUpdated;
+  final VoidCallback onReports;
+  final bool isUpdating;
+  final ValueChanged<bool> onActiveChanged;
   final int index;
   const _PartnerCard({
     required this.data,
     required this.onTap,
-    required this.onUpdated,
+    required this.onReports,
+    required this.isUpdating,
+    required this.onActiveChanged,
     required this.index,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GlassCard(
-          margin: const EdgeInsets.only(bottom: 12),
-          onTap: onTap,
-          child: Row(
+    final card = GlassCard(
+      margin: const EdgeInsets.only(bottom: 12),
+      onTap: onTap,
+      child: Row(
+        children: [
+          Stack(
             children: [
-              Stack(
-                children: [
-                  CircleAvatar(
-                    radius: 30,
-                    backgroundColor: AppColors.orange600.withOpacity(0.2),
-                    child: const Icon(Icons.person, color: AppColors.orange600),
-                  ),
-                  Positioned(
-                    bottom: 0,
-                    right: 0,
-                    child: _StatusDot(status: data.status),
-                  ),
-                ],
+              CircleAvatar(
+                radius: 30,
+                backgroundColor: AppColors.orange600.withOpacity(0.2),
+                child: const Icon(Icons.person, color: AppColors.orange600),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      data.name,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.two_wheeler,
-                          size: 14,
-                          color: AppColors.textMuted,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          data.vehicleNumber,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.phone,
-                          size: 14,
-                          color: AppColors.textMuted,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          data.mobileNumber,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              PopupMenuButton<String>(
-                onSelected: (value) async {
-                  if (data.id == 0) return;
-                  try {
-                    final ds = GetIt.I<DeliveryRemoteDataSource>();
-                    if (value == 'block') {
-                      await ds.blockPartner(partnerId: data.id);
-                    } else if (value == 'unblock') {
-                      await ds.unblockPartner(partnerId: data.id);
-                    }
-                    if (context.mounted) {
-                      onUpdated();
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            value == 'block'
-                                ? 'Partner blocked'
-                                : 'Partner unblocked',
-                          ),
-                        ),
-                      );
-                    }
-                  } catch (e) {
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Action failed')),
-                      );
-                    }
-                  }
-                },
-                itemBuilder: (context) {
-                  final items = <PopupMenuEntry<String>>[];
-                  if (data.active) {
-                    items.add(
-                      const PopupMenuItem(value: 'block', child: Text('Block')),
-                    );
-                  } else {
-                    items.add(
-                      const PopupMenuItem(
-                        value: 'unblock',
-                        child: Text('Unblock'),
-                      ),
-                    );
-                  }
-                  return items;
-                },
+              Positioned(
+                bottom: 0,
+                right: 0,
+                child: _StatusDot(status: data.status),
               ),
             ],
           ),
-        )
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  data.name,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.two_wheeler,
+                      size: 14,
+                      color: AppColors.textMuted,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      data.vehicleNumber,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.phone,
+                      size: 14,
+                      color: AppColors.textMuted,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      data.mobileNumber,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              _PartnerStatusToggle(
+                active: data.active,
+                busy: isUpdating,
+                onChanged: onActiveChanged,
+              ),
+              PopupMenuButton<String>(
+                onSelected: (value) {
+                  if (value == 'reports') onReports();
+                },
+                itemBuilder: (context) => const [
+                  PopupMenuItem(value: 'reports', child: Text('Reports')),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    return (data.active ? card : Opacity(opacity: 0.55, child: card))
         .animate()
         .fadeIn(delay: (index * 50).ms, duration: 300.ms)
         .slideX(begin: 0.2, end: 0, duration: 300.ms);
+  }
+}
+
+class _PartnerStatusToggle extends StatelessWidget {
+  final bool active;
+  final bool busy;
+  final ValueChanged<bool> onChanged;
+
+  const _PartnerStatusToggle({
+    required this.active,
+    required this.busy,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (busy) ...[
+          const SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          const SizedBox(width: 4),
+        ],
+        Text(
+          active ? 'Active' : 'Inactive',
+          style: TextStyle(
+            fontSize: 11,
+            color: active ? AppColors.success : AppColors.error,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        Transform.scale(
+          scale: 0.72,
+          child: Switch(
+            value: active,
+            onChanged: busy ? null : onChanged,
+            activeColor: AppColors.success,
+            activeTrackColor: AppColors.success.withOpacity(0.35),
+            inactiveThumbColor: AppColors.textMuted,
+            inactiveTrackColor: const Color(0xFFE5E7EB),
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -409,9 +537,11 @@ class _StatusDot extends StatelessWidget {
   Widget build(BuildContext context) {
     Color color;
     switch (status) {
+      case 'Active':
       case 'Online':
         color = AppColors.success;
         break;
+      case 'Pending':
       case 'Busy':
         color = AppColors.warning;
         break;
@@ -430,13 +560,453 @@ class _StatusDot extends StatelessWidget {
   }
 }
 
+class _PartnerDetailsSheet extends StatefulWidget {
+  final _Partner partner;
+
+  const _PartnerDetailsSheet({required this.partner});
+
+  @override
+  State<_PartnerDetailsSheet> createState() => _PartnerDetailsSheetState();
+}
+
+class _PartnerDetailsSheetState extends State<_PartnerDetailsSheet> {
+  Map<String, dynamic>? _details;
+  bool _loading = true;
+  String? _errorText;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDetails();
+  }
+
+  Future<void> _loadDetails() async {
+    setState(() {
+      _loading = true;
+      _errorText = null;
+    });
+
+    try {
+      final data = await GetIt.I<DeliveryRemoteDataSource>().getAgentDetails(
+        agentId: widget.partner.id,
+      );
+      if (!mounted) return;
+      setState(() => _details = data);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _errorText = 'Failed to load delivery partner details');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  String _str(dynamic value) {
+    final text = value?.toString().trim() ?? '';
+    return text.isEmpty || text.toLowerCase() == 'null' ? '—' : text;
+  }
+
+  bool _boolValue(dynamic value) {
+    if (value is bool) return value;
+    final text = value?.toString().toLowerCase() ?? '';
+    return text == 'true' || text == '1' || text == 'yes';
+  }
+
+  String _formatDate(dynamic value) {
+    final raw = value?.toString();
+    if (raw == null || raw.isEmpty) return '—';
+    final parsed = DateTime.tryParse(raw);
+    if (parsed == null) return raw;
+    final local = parsed.toLocal();
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${local.year}-${two(local.month)}-${two(local.day)} ${two(local.hour)}:${two(local.minute)}';
+  }
+
+  String _formatStatus(String value) {
+    if (value.isEmpty || value == '—') return widget.partner.status;
+    return value
+        .split('_')
+        .where((part) => part.isNotEmpty)
+        .map((part) {
+          final lower = part.toLowerCase();
+          return '${lower[0].toUpperCase()}${lower.substring(1)}';
+        })
+        .join(' ');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final details = _details ?? const <String, dynamic>{};
+    final displayName = _str(details['displayName']) == '—'
+        ? widget.partner.name
+        : _str(details['displayName']);
+    final status = _formatStatus(_str(details['status']));
+    final verified = _boolValue(details['verified']);
+    final profileImageUrl = _str(details['profileImageUrl']);
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.78,
+      minChildSize: 0.5,
+      maxChildSize: 0.95,
+      builder: (context, controller) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(24),
+            topRight: Radius.circular(24),
+          ),
+        ),
+        child: ListView(
+          controller: controller,
+          padding: const EdgeInsets.all(16),
+          children: [
+            Center(
+              child: Container(
+                width: 44,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.glassBorder,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            GlassCard(
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    radius: 34,
+                    backgroundColor: AppColors.orange600.withOpacity(0.15),
+                    backgroundImage: profileImageUrl == '—'
+                        ? null
+                        : NetworkImage(profileImageUrl),
+                    child: profileImageUrl == '—'
+                        ? const Icon(
+                            Icons.person,
+                            color: AppColors.orange600,
+                            size: 34,
+                          )
+                        : null,
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          displayName,
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 6,
+                          children: [
+                            _PartnerStatusPill(status: status),
+                            _InfoPill(
+                              label: verified ? 'Verified' : 'Not verified',
+                              color: verified
+                                  ? AppColors.success
+                                  : AppColors.warning,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close),
+                    color: AppColors.textSecondary,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            if (_loading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 40),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_errorText != null)
+              GlassCard(
+                child: Column(
+                  children: [
+                    Text(
+                      _errorText!,
+                      style: const TextStyle(color: AppColors.error),
+                    ),
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      onPressed: _loadDetails,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Retry'),
+                    ),
+                  ],
+                ),
+              )
+            else ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: _MetricTile(
+                      label: 'Assignments',
+                      value: _str(details['activeAssignmentCount']),
+                      icon: Icons.assignment_outlined,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _MetricTile(
+                      label: 'Completed',
+                      value: _str(details['totalCompleted']),
+                      icon: Icons.check_circle_outline,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _MetricTile(
+                      label: 'Rating',
+                      value: _str(details['rating']),
+                      icon: Icons.star_outline,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              GlassCard(
+                child: Column(
+                  children: [
+                    _PartnerDetailRow(
+                      icon: Icons.badge_outlined,
+                      label: 'Agent ID',
+                      value: _str(details['id']),
+                    ),
+                    _PartnerDetailRow(
+                      icon: Icons.person_outline,
+                      label: 'User ID',
+                      value: _str(details['userId']),
+                    ),
+                    _PartnerDetailRow(
+                      icon: Icons.store_outlined,
+                      label: 'B2B Unit',
+                      value: _str(details['b2bUnitId']),
+                    ),
+                    _PartnerDetailRow(
+                      icon: Icons.storefront_outlined,
+                      label: 'Store ID',
+                      value: _str(details['storeId']),
+                    ),
+                    _PartnerDetailRow(
+                      icon: Icons.delivery_dining,
+                      label: 'Agent Type',
+                      value: _formatStatus(_str(details['agentType'])),
+                    ),
+                    _PartnerDetailRow(
+                      icon: Icons.two_wheeler,
+                      label: 'Vehicle Type',
+                      value: _str(details['vehicleType']),
+                    ),
+                    _PartnerDetailRow(
+                      icon: Icons.pin_outlined,
+                      label: 'Vehicle Registration',
+                      value: _str(details['vehicleRegistration']),
+                    ),
+                    _PartnerDetailRow(
+                      icon: Icons.groups_outlined,
+                      label: 'Max Assignments',
+                      value: _str(details['maxConcurrentAssignments']),
+                    ),
+                    _PartnerDetailRow(
+                      icon: Icons.reviews_outlined,
+                      label: 'Rating Count',
+                      value: _str(details['ratingCount']),
+                    ),
+                    _PartnerDetailRow(
+                      icon: Icons.work_outline,
+                      label: 'Session Mode',
+                      value: _str(details['sessionMode']),
+                    ),
+                    _PartnerDetailRow(
+                      icon: Icons.tune,
+                      label: 'Specializations',
+                      value: _str(details['specializations']),
+                    ),
+                    _PartnerDetailRow(
+                      icon: Icons.notes,
+                      label: 'Bio',
+                      value: _str(details['bio']),
+                    ),
+                    _PartnerDetailRow(
+                      icon: Icons.calendar_today_outlined,
+                      label: 'Created',
+                      value: _formatDate(details['createdDate']),
+                    ),
+                    _PartnerDetailRow(
+                      icon: Icons.update,
+                      label: 'Updated',
+                      value: _formatDate(details['updatedDate']),
+                      bottomDivider: false,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MetricTile extends StatelessWidget {
+  final String label;
+  final String value;
+  final IconData icon;
+
+  const _MetricTile({
+    required this.label,
+    required this.value,
+    required this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassCard(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        children: [
+          Icon(icon, color: AppColors.info, size: 20),
+          const SizedBox(height: 8),
+          Text(
+            value == '—' ? '0' : value,
+            style: const TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PartnerDetailRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final bool bottomDivider;
+
+  const _PartnerDetailRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.bottomDivider = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, size: 20, color: AppColors.orange600),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textMuted,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      value,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (bottomDivider) const Divider(height: 1),
+      ],
+    );
+  }
+}
+
+class _PartnerStatusPill extends StatelessWidget {
+  final String status;
+
+  const _PartnerStatusPill({required this.status});
+
+  @override
+  Widget build(BuildContext context) {
+    final lower = status.toLowerCase();
+    final color = lower.contains('active')
+        ? AppColors.success
+        : lower.contains('pending')
+        ? AppColors.warning
+        : AppColors.error;
+    return _InfoPill(label: status, color: color);
+  }
+}
+
+class _InfoPill extends StatelessWidget {
+  final String label;
+  final Color color;
+
+  const _InfoPill({required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.14),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+          color: color,
+        ),
+      ),
+    );
+  }
+}
+
 class _Partner {
-  final int id;
+  final String id;
   final String name;
   final String vehicleNumber;
-  final String status;
+  String status;
   final String mobileNumber;
-  final bool active;
+  bool active;
   final bool available;
   _Partner({
     required this.id,
@@ -447,4 +1017,9 @@ class _Partner {
     required this.active,
     required this.available,
   });
+}
+
+String _shortId(String value) {
+  if (value.length <= 8) return value;
+  return value.substring(0, 8);
 }

@@ -7,13 +7,13 @@ class OrdersRepositoryImpl implements OrdersRepository {
   final OrdersRemoteDataSource _remote;
 
   @override
-  Future<OrdersPage> getOrdersByBusiness({
-    required int businessId,
+  Future<OrdersPage> getOrdersByStore({
+    required String storeId,
     required int page,
     required int size,
   }) {
-    return _remote.getOrdersByBusiness(
-      businessId: businessId,
+    return _remote.getOrdersByStore(
+      storeId: storeId,
       page: page,
       size: size,
     );
@@ -26,14 +26,12 @@ class OrdersRepositoryImpl implements OrdersRepository {
 
   @override
   Future<void> updateOrderStatus({
-    required String orderNumber,
+    required String orderId,
     required String status,
-    String? notes,
   }) {
     return _remote.updateOrderStatus(
-      orderNumber: orderNumber,
+      orderId: orderId,
       status: status,
-      notes: notes,
     );
   }
 }

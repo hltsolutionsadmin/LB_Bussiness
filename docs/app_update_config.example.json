@@ -1,0 +1,16 @@
+{
+  "android": {
+    "latestVersion": "1.0.2",
+    "latestBuild": 12,
+    "minBuild": 11,
+    "storeUrl": "https://play.google.com/store/apps/details?id=com.localBasketBusiness",
+    "releaseNotes": "- Faster order updates\n- Bug fixes"
+  },
+  "ios": {
+    "latestVersion": "1.0.2",
+    "latestBuild": 12,
+    "minBuild": 11,
+    "storeUrl": "https://apps.apple.com/app/idXXXXXXXXXX",
+    "releaseNotes": "- Faster order updates\n- Bug fixes"
+  }
+}

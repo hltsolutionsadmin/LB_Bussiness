@@ -35,18 +35,18 @@ class OrdersPoller {
   Future<void> _tick() async {
     if (_isTickInFlight) return;
     _isTickInFlight = true;
-    final user = _sessionStore.user;
-    final businessId = (user != null && user['b2bUnit'] is Map<String, dynamic>)
-        ? (user['b2bUnit']['id'] as int?)
-        : null;
-    if (businessId == null) {
+    final storeId = _sessionStore.storeId;
+    // Gate purely on storeId, same as the Orders tab's own refresh — the
+    // isStoreVendor role check was blocking this poller even for sessions
+    // where the Orders list itself resolves and loads correctly.
+    if (storeId.isEmpty) {
       _isTickInFlight = false;
       return;
     }
 
     try {
-      final page = await _repo.getOrdersByBusiness(
-        businessId: businessId,
+      final page = await _repo.getOrdersByStore(
+        storeId: storeId,
         page: 0,
         size: 50,
       );
@@ -54,7 +54,10 @@ class OrdersPoller {
       final currentIds = page.items.map((e) => e['id'].toString()).toSet();
       bool isNewStage(Map<String, dynamic> o) {
         final s = (o['orderStatus']?.toString() ?? '').toLowerCase();
-        return s.contains('new') || s.contains('place') || s.contains('accept');
+        return s.contains('created') ||
+            s.contains('new') ||
+            s.contains('place') ||
+            s.contains('pending');
       }
 
       if (!_isInitial) {
@@ -69,38 +72,60 @@ class OrdersPoller {
             final order = newOrders.first;
             final ctx = navigatorKey.currentState?.overlay?.context;
             if (ctx != null) {
-              // ignore: use_build_context_synchronously
-              showDialog(
-                context: ctx,
-                barrierDismissible: false,
-                builder: (_) => OrderDetailsDialog(
-                  order: order,
-                  isNewOrder: true,
-                  onAccept: () async {
-                    await _stopSound();
-                    await _repo.updateOrderStatus(
-                      orderNumber: order['orderNumber']?.toString() ?? '',
-                      status: 'PREPARING',
-                      notes: '0',
-                    );
-                    navigatorKey.currentState?.pop();
-                    _showingDialog = false;
-                  },
-                  onReject: () async {
-                    await _stopSound();
-                    await _repo.updateOrderStatus(
-                      orderNumber: order['orderNumber']?.toString() ?? '',
-                      status: 'REJECTED',
-                      notes: '0',
-                    );
-                    navigatorKey.currentState?.pop();
-                    _showingDialog = false;
-                  },
-                ),
-              ).then((_) async {
-                _showingDialog = false;
+              try {
+                // ignore: use_build_context_synchronously
+                showDialog(
+                  context: ctx,
+                  barrierDismissible: false,
+                  builder: (_) => OrderDetailsDialog(
+                    order: order,
+                    isNewOrder: true,
+                    onAccept: () async {
+                      await _stopSound();
+                      try {
+                        await _repo.updateOrderStatus(
+                          orderId: order['id']?.toString() ?? '',
+                          status: 'CONFIRMED',
+                        );
+                      } catch (e) {
+                        if (kDebugMode) {
+                          debugPrint('[OrdersPoller] accept failed: $e');
+                        }
+                      } finally {
+                        navigatorKey.currentState?.pop();
+                        _showingDialog = false;
+                      }
+                    },
+                    onReject: () async {
+                      await _stopSound();
+                      try {
+                        await _repo.updateOrderStatus(
+                          orderId: order['id']?.toString() ?? '',
+                          status: 'REJECTED',
+                        );
+                      } catch (e) {
+                        if (kDebugMode) {
+                          debugPrint('[OrdersPoller] reject failed: $e');
+                        }
+                      } finally {
+                        navigatorKey.currentState?.pop();
+                        _showingDialog = false;
+                      }
+                    },
+                  ),
+                ).then((_) async {
+                  _showingDialog = false;
+                  await _stopSound();
+                });
+              } catch (e) {
+                // showDialog itself failed synchronously (e.g. stale context) —
+                // don't leave the flag stuck, or every future order goes silent.
+                if (kDebugMode) {
+                  debugPrint('[OrdersPoller] show dialog failed: $e');
+                }
                 await _stopSound();
-              });
+                _showingDialog = false;
+              }
             } else {
               // If no context yet, stop the sound to avoid looping indefinitely
               await _stopSound();

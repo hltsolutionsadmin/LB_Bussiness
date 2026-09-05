@@ -7,6 +7,19 @@ abstract class ProductRepository {
     required int size,
   });
 
+  Future<ProductPage> getProductsByStoreId({
+    required String storeId,
+    required int page,
+    required int size,
+  });
+
+  Future<ProductPage> getProductsByB2bUnit({
+    required String b2bUnitId,
+    required String storeId,
+    required int page,
+    required int size,
+  });
+
   Future<Map<String, dynamic>> createProduct({
     required String name,
     required String shortCode,
@@ -23,7 +36,7 @@ abstract class ProductRepository {
   });
 
   Future<Map<String, dynamic>> updateProduct({
-    required int id,
+    required dynamic id,
     required String name,
     required String shortCode,
     required bool ignoreTax,
@@ -38,9 +51,14 @@ abstract class ProductRepository {
     String? imageFilePath,
   });
 
-  Future<void> deleteProduct({required int id});
+  Future<void> deleteProduct({required dynamic id});
 
   Future<void> toggleAvailability({required int id});
+
+  Future<void> setProductActive({
+    required String productId,
+    required bool active,
+  });
 
   Future<void> updateBusinessTimings({
     required int businessId,
@@ -49,7 +67,7 @@ abstract class ProductRepository {
   });
 
   Future<void> updateProductTimings({
-    required int id,
+    required dynamic id,
     required String startTime,
     required String endTime,
   });

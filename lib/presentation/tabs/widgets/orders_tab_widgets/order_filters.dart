@@ -27,7 +27,7 @@ class OrderFilters extends StatelessWidget {
         ],
       ),
       child: Row(
-        children: ['all', 'new', 'preparing', 'ready'].map((filter) {
+        children: ['all', 'new', 'preparing', 'ready', 'picked_up'].map((filter) {
           final isSelected = selectedFilter == filter;
           return Expanded(
             child: GestureDetector(

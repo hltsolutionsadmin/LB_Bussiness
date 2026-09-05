@@ -21,11 +21,18 @@ class OrderCard extends StatelessWidget {
 
   String _stage(String status) {
     final s = status.toLowerCase();
-    if (s.contains('ready')) return 'ready';
-    if (s.contains('prepar')) return 'preparing';
-    if (s.contains('new') || s.contains('place') || s.contains('accept')) {
+    if (s.contains('created') ||
+        s.contains('new') ||
+        s.contains('place') ||
+        s.contains('pending')) {
       return 'new';
     }
+    if (s.contains('confirm') || s.contains('accept')) return 'confirmed';
+    if (s.contains('prepar')) return 'preparing';
+    if (s.contains('ready')) return 'ready';
+    if (s.contains('picked')) return 'picked_up';
+    if (s.contains('delivered')) return 'delivered';
+    if (s.contains('in_delivery')) return 'in_delivery';
     return s;
   }
 
@@ -45,9 +52,17 @@ class OrderCard extends StatelessWidget {
     switch (_stage(status)) {
       case 'new':
         return const Color(0xFF6366F1); // indigo
+      case 'confirmed':
+        return const Color(0xFFF97316); // orange
       case 'preparing':
         return const Color(0xFFF59E0B); // amber
       case 'ready':
+        return const Color(0xFF10B981); // emerald
+      case 'picked_up':
+        return const Color(0xFF8B5CF6); // violet
+      case 'in_delivery':
+        return const Color(0xFF06B6D4); // cyan
+      case 'delivered':
         return const Color(0xFF10B981); // emerald
       default:
         return Colors.grey;

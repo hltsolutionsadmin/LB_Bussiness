@@ -31,7 +31,7 @@ class _OrdersTabState extends State<OrdersTab> {
   int _initialWaitTicks = 0;
   Set<String> _previousOrderIds = <String>{};
   bool _isInitialLoad = true;
-  int? _lastBusinessId;
+  String? _lastStoreId;
   final Set<String> _updatingOrderIds = <String>{};
 
   @override
@@ -46,8 +46,8 @@ class _OrdersTabState extends State<OrdersTab> {
       t,
     ) {
       _initialWaitTicks += 1;
-      final bid = _getBusinessId();
-      if (bid != null) {
+      final sid = _getStoreId();
+      if (sid != null && sid.isNotEmpty) {
         t.cancel();
         _initialWaitTimer = null;
         _initialWaitTicks = 0;
@@ -81,17 +81,17 @@ class _OrdersTabState extends State<OrdersTab> {
   }
 
   void _onSessionChanged() {
-    final businessId = _getBusinessId();
-    if (businessId == null) return;
+    final storeId = _getStoreId();
+    if (storeId == null || storeId.isEmpty) return;
 
-    // Start auto refresh only after businessId is available.
+    // Start auto refresh only after storeId is available.
     if (_refreshTimer == null) {
       _startAutoRefresh();
     }
 
-    // If businessId became available (or changed), force a refresh.
-    if (_lastBusinessId != businessId) {
-      _lastBusinessId = businessId;
+    // If storeId became available (or changed), force a refresh.
+    if (_lastStoreId != storeId) {
+      _lastStoreId = storeId;
       _loadPage(refresh: true);
       return;
     }
@@ -111,8 +111,8 @@ class _OrdersTabState extends State<OrdersTab> {
   Future<void> _silentRefresh() async {
     if (_loading || _silentRefreshing) return;
 
-    final businessId = _getBusinessId();
-    if (businessId == null) return;
+    final storeId = _getStoreId();
+    if (storeId == null || storeId.isEmpty) return;
 
     // Don't disrupt the user while they're scrolling through older pages.
     if (_scrollController.hasClients &&
@@ -124,8 +124,8 @@ class _OrdersTabState extends State<OrdersTab> {
 
     try {
       final repo = sl<OrdersRepository>();
-      final pageData = await repo.getOrdersByBusiness(
-        businessId: businessId,
+      final pageData = await repo.getOrdersByStore(
+        storeId: storeId,
         page: 0,
         size: _size,
       );
@@ -172,14 +172,8 @@ class _OrdersTabState extends State<OrdersTab> {
   // Sound/popups are handled globally.
 
   // Helper methods
-  int? _getBusinessId() {
-    final user = sl<SessionStore>().user;
-    if (user == null || user['b2bUnit'] is! Map) return null;
-    final unit = Map<String, dynamic>.from(user['b2bUnit'] as Map);
-    final dynamic v = unit['id'];
-    if (v is num) return v.toInt();
-    final parsed = int.tryParse(v?.toString() ?? '');
-    return parsed;
+  String? _getStoreId() {
+    return sl<SessionStore>().storeId;
   }
 
   void _showSnackBar(String message) {
@@ -191,19 +185,26 @@ class _OrdersTabState extends State<OrdersTab> {
 
   String _stage(String status) {
     final s = status.toLowerCase();
-    if (s.contains('ready')) return 'ready';
-    if (s.contains('prepar')) return 'preparing';
-    if (s.contains('new') || s.contains('place') || s.contains('accept')) {
+    if (s.contains('created') ||
+        s.contains('new') ||
+        s.contains('place') ||
+        s.contains('pending')) {
       return 'new';
     }
+    if (s.contains('confirm') || s.contains('accept')) return 'confirmed';
+    if (s.contains('prepar')) return 'preparing';
+    if (s.contains('ready')) return 'ready';
+    if (s.contains('picked')) return 'picked_up';
+    if (s.contains('delivered')) return 'delivered';
+    if (s.contains('in_delivery')) return 'in_delivery';
     return s;
   }
 
   Future<void> _loadPage({bool refresh = false}) async {
     if (_loading) return;
 
-    final businessId = _getBusinessId();
-    if (businessId == null) return;
+    final storeId = _getStoreId();
+    if (storeId == null || storeId.isEmpty) return;
 
     setState(() => _loading = true);
 
@@ -219,8 +220,8 @@ class _OrdersTabState extends State<OrdersTab> {
       if (!_hasNext) return;
 
       final repo = sl<OrdersRepository>();
-      final pageData = await repo.getOrdersByBusiness(
-        businessId: businessId,
+      final pageData = await repo.getOrdersByStore(
+        storeId: storeId,
         page: _page,
         size: _size,
       );
@@ -261,38 +262,34 @@ class _OrdersTabState extends State<OrdersTab> {
 
   Future<void> _updateOrderStatus(
     Map<String, dynamic> order,
-    String newStatus, {
-    String notes = '0',
-  }) async {
+    String newStatus,
+  ) async {
     final repo = sl<OrdersRepository>();
-    final orderNumber = order['orderNumber']?.toString();
-    if (orderNumber == null || orderNumber.isEmpty) {
-      _showSnackBar('Order number missing');
+    final orderId = order['id']?.toString();
+    if (orderId == null || orderId.isEmpty) {
+      _showSnackBar('Order ID missing');
       return;
     }
 
-    final id = order['id']?.toString();
-    if (id != null && mounted) {
-      setState(() => _updatingOrderIds.add(id));
+    if (mounted) {
+      setState(() => _updatingOrderIds.add(orderId));
     }
 
     try {
       await repo.updateOrderStatus(
-        orderNumber: orderNumber,
+        orderId: orderId,
         status: newStatus,
-        notes: notes,
       );
       if (!mounted) return;
       setState(() {
-        // Update the backing list instance too
         order['orderStatus'] = newStatus;
       });
       _showSnackBar('Updated to ${_label(newStatus)}');
     } catch (e) {
       _showSnackBar('Failed to update: $e');
     } finally {
-      if (id != null && mounted) {
-        setState(() => _updatingOrderIds.remove(id));
+      if (mounted) {
+        setState(() => _updatingOrderIds.remove(orderId));
       }
     }
   }

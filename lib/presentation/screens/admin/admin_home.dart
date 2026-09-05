@@ -80,10 +80,10 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
           onNavigate: (route) {
             final parts = route.split(':');
             final name = parts.isNotEmpty ? parts.first : route;
-            final partnerId = parts.length > 1 ? int.tryParse(parts[1]) : null;
+            final partnerId = parts.length > 1 ? parts[1] : '';
 
             if (name == 'delivery-reports') {
-              if (partnerId == null || partnerId <= 0) {
+              if (partnerId.isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('Invalid delivery partner id')),
                 );

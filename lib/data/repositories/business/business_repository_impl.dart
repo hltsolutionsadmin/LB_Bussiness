@@ -14,6 +14,36 @@ class BusinessRepositoryImpl implements BusinessRepository {
   }
 
   @override
+  Future<Map<String, dynamic>> setStoreActive({
+    required String storeId,
+    required String name,
+    required String code,
+    required bool active,
+  }) {
+    return _remote.setStoreActive(
+      storeId: storeId,
+      name: name,
+      code: code,
+      active: active,
+    );
+  }
+
+  @override
+  Future<Map<String, dynamic>> createStoreWithLocation({
+    required String name,
+    required String code,
+    required double latitude,
+    required double longitude,
+  }) {
+    return _remote.createStoreWithLocation(
+      name: name,
+      code: code,
+      latitude: latitude,
+      longitude: longitude,
+    );
+  }
+
+  @override
   Future<int?> onboardBusiness({
     required String businessName,
     required String addressLine1,

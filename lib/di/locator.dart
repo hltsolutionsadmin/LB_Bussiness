@@ -20,6 +20,7 @@ import 'package:local_basket_business/domain/repositories/products/product_repos
 import 'package:local_basket_business/domain/repositories/orders/orders_repository.dart';
 import 'package:local_basket_business/domain/repositories/business/business_repository.dart';
 import 'package:local_basket_business/core/services/orders_poller.dart';
+import 'package:local_basket_business/core/services/app_update_service.dart';
 
 final sl = GetIt.instance;
 
@@ -30,14 +31,16 @@ Future<void> setupLocator() async {
   // API Configuration
   final String baseUrl = EnvConfig.baseUrl.isNotEmpty
       ? EnvConfig.baseUrl
-      : 'https://gateway-service.purplefield-2b43f6a6.southindia.azurecontainerapps.io';
+      : 'https://gateway-service.orangeplant-f70408fb.centralindia.azurecontainerapps.io/';
   sl.registerLazySingleton<ApiConfig>(() => ApiConfig(
     baseUrl: baseUrl,
     endpoints: ApiConfig.endpointsV1,
   ));
-  
-  sl.registerLazySingleton<DioClient>(() => DioClient(sl(), sl<ApiConfig>().baseUrl));
+ 
   sl.registerLazySingleton<AppSecureStorage>(() => AppSecureStorage());
+  sl.registerLazySingleton<DioClient>(
+    () => DioClient(sl(), sl<ApiConfig>().baseUrl, sl<AppSecureStorage>()),
+  );
   sl.registerLazySingleton<SessionStore>(() => SessionStore());
 
   // Data sources
@@ -76,4 +79,5 @@ Future<void> setupLocator() async {
   sl.registerLazySingleton<OrdersPoller>(
     () => OrdersPoller(sl<OrdersRepository>(), sl<SessionStore>()),
   );
+  sl.registerLazySingleton<AppUpdateService>(() => AppUpdateService());
 }
