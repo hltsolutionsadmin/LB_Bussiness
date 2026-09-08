@@ -18,7 +18,7 @@ class OrderActionButtons extends StatelessWidget {
     final status = (order['orderStatus'] ?? order['status'] ?? '').toString();
 
     switch (merchantStage(status)) {
-      // Two taps: Accept (→ CONFIRMED → PREPARING) then Mark as Ready (→ READY).
+      // One tap per stage: Accept → Mark as Preparing → Mark as Ready.
       case 'new':
         return _buildSingleButton(
           label: 'Accept Order',
@@ -26,6 +26,11 @@ class OrderActionButtons extends StatelessWidget {
           color: Colors.green,
         );
       case 'confirmed':
+        return _buildSingleButton(
+          label: 'Mark as Preparing',
+          newStatus: 'PREPARING',
+          color: const Color(0xFFF59E0B),
+        );
       case 'preparing':
         return _buildSingleButton(
           label: 'Mark as Ready',

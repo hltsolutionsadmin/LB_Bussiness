@@ -3,11 +3,13 @@ import 'dart:developer' as dev;
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:local_basket_business/core/services/tab_navigation_service.dart';
 import 'package:local_basket_business/core/session/session_store.dart';
 import 'package:local_basket_business/core/utils/order_status.dart';
 import 'package:local_basket_business/domain/repositories/orders/orders_repository.dart';
 import 'package:local_basket_business/presentation/widgets/new_order_alert_dialog.dart';
 import 'package:local_basket_business/routes/app_router.dart';
+import 'package:local_basket_business/di/locator.dart';
 
 /// Polls the store's orders and, whenever a fresh order is waiting for the
 /// merchant, plays a looping alert sound and shows a blocking popup — from
@@ -19,7 +21,7 @@ void _log(String m) {
   print('>>> ORDERS_POLLER: $m');
 }
 
-class OrdersPoller {
+class OrdersPoller extends ChangeNotifier {
   OrdersPoller(this._repo, this._sessionStore) {
     _log('constructed');
   }
@@ -42,8 +44,20 @@ class OrdersPoller {
   final Map<String, String> merchantStatus = <String, String>{};
 
   void recordMerchantStatus(String orderId, String status) {
-    if (orderId.isNotEmpty) merchantStatus[orderId] = status;
+    if (orderId.isEmpty) return;
+    if (merchantStatus[orderId] == status) return;
+    merchantStatus[orderId] = status;
+    // Let the Orders tab re-apply this onto whatever it's currently showing.
+    notifyListeners();
   }
+
+  /// A new order waiting for the merchant, detected by the background poll but
+  /// not yet shown. A permanently-mounted widget (the dashboard) listens for
+  /// this and presents the dialog with its own valid context — that's what
+  /// makes the alert appear on *any* tab, not just the Orders tab.
+  Map<String, dynamic>? _pendingAlert;
+  Map<String, dynamic>? get pendingAlert => _pendingAlert;
+
   bool _showingDialog = false;
   bool _soundPlaying = false;
   bool _isTickInFlight = false;
@@ -92,10 +106,36 @@ class OrdersPoller {
     }
   }
 
+  /// Queue a new-order alert. Starts the sound straight away (so it rings on
+  /// whatever screen the merchant is on) and notifies listeners so the
+  /// dashboard host can show the dialog.
+  void _queueAlert(Map<String, dynamic> order) {
+    if (_showingDialog) return;
+    final id = _orderId(order);
+    final alreadyQueued =
+        _pendingAlert != null && _orderId(_pendingAlert!) == id;
+    _pendingAlert = order;
+    if (!alreadyQueued) _log('queued alert for $id');
+    _playLoop(); // idempotent
+    // Notify every poll while unshown — this is also the retry path if a
+    // previous show attempt failed (e.g. dashboard wasn't mounted yet).
+    notifyListeners();
+  }
+
+  /// Called by the always-mounted dashboard, which owns a context that is
+  /// reliably inside the navigator — shows the queued new-order dialog.
+  void presentPendingAlert(BuildContext context) {
+    final order = _pendingAlert;
+    if (order == null || _showingDialog) return;
+    _pendingAlert = null;
+    _presentAlert(order, context);
+  }
+
   /// Clears per-session state — call on logout.
   void reset() {
     _handledOrderIds.clear();
     merchantStatus.clear();
+    _pendingAlert = null;
     _showingDialog = false;
     _stopSound();
   }
@@ -127,7 +167,7 @@ class OrdersPoller {
       final page = await _repo.getOrdersByStore(
         storeId: storeId,
         page: 0,
-        size: 50,
+        size: 20,
       );
       final items = page.items;
 
@@ -148,8 +188,9 @@ class OrdersPoller {
           .toList();
 
       if (unhandled.isNotEmpty && !_showingDialog) {
-        _presentAlert(unhandled.first);
+        _queueAlert(unhandled.first);
       } else if (awaiting.isEmpty && !_showingDialog) {
+        _pendingAlert = null;
         await _stopSound();
       }
 
@@ -163,9 +204,10 @@ class OrdersPoller {
   }
 
   void _presentAlert(Map<String, dynamic> order, [BuildContext? context]) {
-    final ctx = context ??
-        navigatorKey.currentState?.overlay?.context ??
-        navigatorKey.currentContext;
+    // [context] comes from an always-mounted widget (the dashboard) or the
+    // Orders screen — a context reliably inside the navigator. Falling back to
+    // the root overlay only covers the rare "dashboard not mounted yet" gap.
+    final ctx = context ?? navigatorKey.currentState?.overlay?.context;
     if (ctx == null) {
       _log('no context yet — will retry next tick');
       return;
@@ -173,48 +215,89 @@ class OrdersPoller {
 
     final orderId = _orderId(order);
     _handledOrderIds.add(orderId);
+    _pendingAlert = null; // consumed — don't let the host re-show it
     _showingDialog = true;
     _playLoop();
 
-    final chain =
-        nextOrderStatuses(_statusOf(order)) ?? const ['CONFIRMED', 'PREPARING'];
+    final chain = nextOrderStatuses(_statusOf(order)) ?? const ['CONFIRMED'];
+
+    /// Pops the dialog (and any screen the merchant had navigated into) and
+    /// lands them on the Orders tab, so they see the result of their action.
+    void goToOrdersTab() {
+      sl<TabNavigationService>().goToOrders();
+      navigatorKey.currentState?.popUntil((route) => route.isFirst);
+    }
+
+    void closeDialogOnly() {
+      if (navigatorKey.currentState?.canPop() ?? false) {
+        navigatorKey.currentState?.pop();
+      }
+    }
 
     Future<void> accept() async {
       await _stopSound();
+      var success = false;
       try {
         for (final s in chain) {
           await _repo.updateOrderStatus(orderId: orderId, status: s);
+          recordMerchantStatus(orderId, s);
         }
-        recordMerchantStatus(orderId, chain.last);
         _log('accepted $orderId -> ${chain.join(",")}');
+        success = true;
       } catch (e) {
         _log('accept failed: $e');
         _handledOrderIds.remove(orderId); // let it re-alert
       } finally {
-        if (navigatorKey.currentState?.canPop() ?? false) {
-          navigatorKey.currentState?.pop();
-        }
         _showingDialog = false;
+        success ? goToOrdersTab() : closeDialogOnly();
+      }
+    }
+
+    Future<void> reject() async {
+      await _stopSound();
+      var success = false;
+      try {
+        await _repo.updateOrderStatus(orderId: orderId, status: 'CANCELLED');
+        recordMerchantStatus(orderId, 'CANCELLED');
+        _log('rejected $orderId -> CANCELLED');
+        success = true;
+      } catch (e) {
+        _log('reject failed: $e');
+        _handledOrderIds.remove(orderId); // let it re-alert
+      } finally {
+        _showingDialog = false;
+        success ? goToOrdersTab() : closeDialogOnly();
       }
     }
 
     _log('showing popup for $orderId (${chain.join(",")})');
-    showDialog<void>(
-      context: ctx,
-      barrierDismissible: false,
-      useRootNavigator: true,
-      builder: (_) => PopScope(
-        canPop: false,
-        child: NewOrderAlertDialog(
-          order: order,
-          acceptLabel: 'Accept Order',
-          onAccept: accept,
+    try {
+      showDialog<void>(
+        context: ctx,
+        useRootNavigator: true,
+        barrierDismissible: false,
+        builder: (_) => PopScope(
+          canPop: false,
+          child: NewOrderAlertDialog(
+            order: order,
+            acceptLabel: 'Accept Order',
+            onAccept: accept,
+            rejectLabel: 'Reject Order',
+            onReject: reject,
+          ),
         ),
-      ),
-    ).whenComplete(() {
+      ).whenComplete(() {
+        _showingDialog = false;
+        _stopSound();
+      });
+    } catch (e) {
+      _log('failed to show popup for $orderId: $e — will retry next tick');
+      _handledOrderIds.remove(orderId);
       _showingDialog = false;
-      _stopSound();
-    });
+      // Re-queue without notifying (notifying here could recurse straight back
+      // into this failing path) — the next 15s poll picks it up again.
+      _pendingAlert = order;
+    }
   }
 
   Future<void> _playLoop() async {

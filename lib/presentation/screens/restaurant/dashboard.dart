@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:local_basket_business/core/services/orders_poller.dart';
+import 'package:local_basket_business/core/services/tab_navigation_service.dart';
 import 'package:local_basket_business/core/session/session_store.dart';
 import 'package:local_basket_business/core/utils/responsive.dart';
 import 'package:local_basket_business/di/locator.dart';
@@ -46,20 +48,49 @@ class _DashboardScreenState extends State<DashboardScreen>
     ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
 
     _controller.forward();
+
+    // Lets services outside the widget tree (e.g. OrdersPoller, after the
+    // merchant accepts/rejects a new order) switch the visible tab. A fresh
+    // dashboard always starts on Home, so reset the shared index too —
+    // otherwise a stale value from a previous session (e.g. left on Orders)
+    // would silently desync it from this screen's own starting tab.
+    sl<TabNavigationService>().setIndex(0);
+    sl<TabNavigationService>().addListener(_onExternalTabChange);
+
+    // The dashboard is mounted under every tab, so its context is always a
+    // valid place to show the new-order alert. The background poll just
+    // queues the order; this is what actually pops the dialog + sound on
+    // Home / Menu / Analytics / Profile, not only the Orders tab.
+    sl<OrdersPoller>().addListener(_onPollerChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _onPollerChanged());
   }
 
   @override
   void dispose() {
+    sl<TabNavigationService>().removeListener(_onExternalTabChange);
+    sl<OrdersPoller>().removeListener(_onPollerChanged);
     _controller.dispose();
     super.dispose();
   }
 
-  void animateTabChange(int index) {
+  void _onPollerChanged() {
+    if (!mounted) return;
+    if (sl<OrdersPoller>().pendingAlert == null) return;
+    sl<OrdersPoller>().presentPendingAlert(context);
+  }
+
+  void _onExternalTabChange() {
+    final index = sl<TabNavigationService>().currentIndex;
+    if (index == _currentIndex) return;
     setState(() {
       _currentIndex = index;
       _controller.reset();
       _controller.forward();
     });
+  }
+
+  void animateTabChange(int index) {
+    sl<TabNavigationService>().setIndex(index);
   }
 
   @override
