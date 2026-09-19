@@ -21,6 +21,7 @@ import 'package:local_basket_business/domain/repositories/orders/orders_reposito
 import 'package:local_basket_business/domain/repositories/business/business_repository.dart';
 import 'package:local_basket_business/core/services/orders_poller.dart';
 import 'package:local_basket_business/core/services/app_update_service.dart';
+import 'package:local_basket_business/core/services/tab_navigation_service.dart';
 
 final sl = GetIt.instance;
 
@@ -80,4 +81,5 @@ Future<void> setupLocator() async {
     () => OrdersPoller(sl<OrdersRepository>(), sl<SessionStore>()),
   );
   sl.registerLazySingleton<AppUpdateService>(() => AppUpdateService());
+  sl.registerLazySingleton<TabNavigationService>(() => TabNavigationService());
 }

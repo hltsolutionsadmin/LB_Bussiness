@@ -57,18 +57,22 @@ String merchantStatusLabel(String status) {
   }
 }
 
-/// Merchant workflow is two taps only:
-///  1. "Accept Order"  → pushes CONFIRMED then PREPARING
-///  2. "Mark as Ready" → pushes READY
-/// Returns the full status chain to push for the single action available at
-/// [status], or `null` when the order is already READY (nothing left to do).
+/// Merchant workflow, one tap (one backend transition) per stage:
+///  new       → "Accept Order"      → CONFIRMED
+///  confirmed → "Mark as Preparing" → PREPARING
+///  preparing → "Mark as Ready"     → READY
+/// Returns the status chain to push for the single action available at
+/// [status], or `null` once the order is READY (nothing left to do).
+///
+/// Each step is a single transition on purpose: jumping two states at once
+/// used to skip the "preparing" stage entirely and left the card stuck on a
+/// stale status when the second call failed.
 List<String>? nextOrderStatuses(String status) {
   switch (merchantStage(status)) {
     case 'new':
-      return const ['CONFIRMED', 'PREPARING'];
+      return const ['CONFIRMED'];
     case 'confirmed':
-      // Stuck at CONFIRMED (e.g. half-failed accept) — fill the gap too.
-      return const ['PREPARING', 'READY'];
+      return const ['PREPARING'];
     case 'preparing':
       return const ['READY'];
     default:

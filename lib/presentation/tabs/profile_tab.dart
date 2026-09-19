@@ -6,6 +6,7 @@ import 'package:local_basket_business/di/locator.dart';
 import 'package:local_basket_business/core/services/orders_poller.dart';
 import 'package:local_basket_business/domain/repositories/products/product_repository.dart';
 import 'package:local_basket_business/presentation/screens/terms/terms_and_conditions.dart';
+import 'package:local_basket_business/presentation/screens/restaurant/past_orders_screen.dart';
 import 'package:local_basket_business/core/storage/secure_storage.dart';
 import 'package:local_basket_business/domain/repositories/business/business_repository.dart';
 
@@ -805,6 +806,36 @@ class _ProfileTabState extends State<ProfileTab> {
                   ),
                   const Divider(height: 1),
                   */
+                  // Store-admin / restaurant-owner only — business admins
+                  // manage orders from the admin dashboard's reports instead.
+                  AnimatedBuilder(
+                    animation: sl<SessionStore>(),
+                    builder: (context, _) {
+                      if (!sl<SessionStore>().isStoreVendor) {
+                        return const SizedBox.shrink();
+                      }
+                      return Column(
+                        children: [
+                          _MenuItem(
+                            icon: Icons.history,
+                            iconColor: Colors.teal,
+                            label: 'Past Orders',
+                            description: 'View delivered order history',
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      const PastOrdersScreen(),
+                                ),
+                              );
+                            },
+                          ),
+                          const Divider(height: 1),
+                        ],
+                      );
+                    },
+                  ),
                   _MenuItem(
                     icon: Icons.description,
                     iconColor: Colors.indigo,

@@ -2,17 +2,30 @@ import 'package:flutter/material.dart';
 
 /// Minimal, dependency-light "new order arrived" alert shown by [OrdersPoller].
 /// Deliberately simple so it can never fail to render over the app.
-class NewOrderAlertDialog extends StatelessWidget {
+class NewOrderAlertDialog extends StatefulWidget {
   const NewOrderAlertDialog({
     super.key,
     required this.order,
     required this.acceptLabel,
     required this.onAccept,
+    this.rejectLabel = 'Reject Order',
+    this.onReject,
   });
 
   final Map<String, dynamic> order;
   final String acceptLabel;
   final Future<void> Function() onAccept;
+  final String rejectLabel;
+  final Future<void> Function()? onReject;
+
+  @override
+  State<NewOrderAlertDialog> createState() => _NewOrderAlertDialogState();
+}
+
+class _NewOrderAlertDialogState extends State<NewOrderAlertDialog> {
+  bool _processing = false;
+
+  Map<String, dynamic> get order => widget.order;
 
   String get _orderNo =>
       (order['orderNumber'] ?? order['id'] ?? '').toString();
@@ -26,6 +39,16 @@ class NewOrderAlertDialog extends StatelessWidget {
     if (items is List) return items.length;
     final c = order['itemsCount'];
     return c is int ? c : int.tryParse('$c') ?? 0;
+  }
+
+  Future<void> _run(Future<void> Function() action) async {
+    if (_processing) return;
+    setState(() => _processing = true);
+    try {
+      await action();
+    } finally {
+      if (mounted) setState(() => _processing = false);
+    }
   }
 
   @override
@@ -69,20 +92,56 @@ class NewOrderAlertDialog extends StatelessWidget {
       ),
       actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       actions: [
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton(
-            onPressed: onAccept,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _processing
+                    ? null
+                    : () => _run(widget.onAccept),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: _processing
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      )
+                    : Text(widget.acceptLabel),
               ),
             ),
-            child: Text(acceptLabel),
-          ),
+            if (widget.onReject != null) ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: _processing
+                      ? null
+                      : () => _run(widget.onReject!),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.red,
+                    side: const BorderSide(color: Colors.red),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: Text(widget.rejectLabel),
+                ),
+              ),
+            ],
+          ],
         ),
       ],
     );

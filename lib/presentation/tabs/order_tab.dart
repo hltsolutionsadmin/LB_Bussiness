@@ -8,6 +8,7 @@ import 'package:local_basket_business/core/utils/order_status.dart';
 import 'package:local_basket_business/domain/repositories/orders/orders_repository.dart';
 import 'widgets/orders_tab_widgets/order_filters.dart';
 import 'widgets/orders_tab_widgets/order_card.dart';
+import 'widgets/orders_tab_widgets/order_card_shimmer.dart';
 import 'widgets/orders_tab_widgets/order_details_dialog.dart';
 
 class OrdersTab extends StatefulWidget {
@@ -40,6 +41,10 @@ class _OrdersTabState extends State<OrdersTab> {
   void initState() {
     super.initState();
     sl<SessionStore>().addListener(_onSessionChanged);
+    // The popup can accept/reject an order while this tab is already mounted;
+    // re-apply the merchant's status onto the visible list when that happens
+    // so a card doesn't keep showing the old ("new") status.
+    sl<OrdersPoller>().addListener(_onMerchantStatusChanged);
     _onSessionChanged();
 
     // In some cases the tab is built before userDetails finishes and
@@ -78,8 +83,14 @@ class _OrdersTabState extends State<OrdersTab> {
     _refreshTimer?.cancel();
     _initialWaitTimer?.cancel();
     sl<SessionStore>().removeListener(_onSessionChanged);
+    sl<OrdersPoller>().removeListener(_onMerchantStatusChanged);
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _onMerchantStatusChanged() {
+    if (!mounted) return;
+    setState(_applyLocalStatus);
   }
 
   void _onSessionChanged() {
@@ -132,7 +143,15 @@ class _OrdersTabState extends State<OrdersTab> {
         size: _size,
       );
 
-      final newOrderIds = pageData.items
+      // Only today's orders belong on this live board.
+      final incoming = pageData.items.where(_isToday).toList();
+
+      // If page 0 already spills into an earlier day, today's orders don't
+      // even fill one page — so there's no next page of them to load, and the
+      // footer should read "no more orders" rather than spin forever.
+      final reachedEarlierDay = incoming.length < pageData.items.length;
+
+      final newOrderIds = incoming
           .map((order) => order['id'].toString())
           .toSet();
 
@@ -145,7 +164,6 @@ class _OrdersTabState extends State<OrdersTab> {
       if (mounted) {
         setState(() {
           // Replace the first page without clearing everything
-          final incoming = pageData.items;
           if (_orders.isEmpty) {
             _orders.addAll(incoming);
           } else {
@@ -159,7 +177,7 @@ class _OrdersTabState extends State<OrdersTab> {
               _orders.addAll(incoming.sublist(_orders.length));
             }
           }
-          _hasNext = pageData.hasNext;
+          _hasNext = pageData.hasNext && !reachedEarlierDay;
           _page = 1; // Next page after refresh
           _applyLocalStatus();
         });
@@ -196,6 +214,16 @@ class _OrdersTabState extends State<OrdersTab> {
   }
 
   String _stage(String status) => merchantStage(status);
+
+  /// This screen is a live "today's orders" board — anything placed on an
+  /// earlier day belongs in the Profile ▸ Past Orders history instead.
+  bool _isToday(Map<String, dynamic> o) {
+    final raw = o['createdDate'] ?? o['createdAt'] ?? o['created'];
+    final dt = DateTime.tryParse(raw?.toString() ?? '')?.toLocal();
+    if (dt == null) return false;
+    final now = DateTime.now();
+    return dt.year == now.year && dt.month == now.month && dt.day == now.day;
+  }
 
   /// The merchant's own progression lives on the (singleton) OrdersPoller so
   /// the popup and this list agree. Once the merchant has acted, their choice
@@ -235,9 +263,15 @@ class _OrdersTabState extends State<OrdersTab> {
         size: _size,
       );
 
+      // Orders come back newest-first, so once a page contains an order from
+      // an earlier day we've reached the end of "today" — stop paginating
+      // rather than walking further back through history.
+      final todayItems = pageData.items.where(_isToday).toList();
+      final reachedEarlierDay = todayItems.length < pageData.items.length;
+
       setState(() {
-        _orders.addAll(pageData.items);
-        _hasNext = pageData.hasNext;
+        _orders.addAll(todayItems);
+        _hasNext = pageData.hasNext && !reachedEarlierDay;
         _page = pageData.page + 1;
 
         // Initialize previous order IDs on first load
@@ -257,30 +291,34 @@ class _OrdersTabState extends State<OrdersTab> {
         );
       }
     } catch (e) {
-      if (mounted) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _showSnackBar('Failed to load orders: $e');
-        });
-      }
+      if (_orders.isEmpty) {
+        // Nothing on screen yet — this is a real failure, surface it.
+        if (mounted) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _showSnackBar('Failed to load orders: $e');
+          });
 
-      // If initial load fails while the session is still settling, retry once.
-      if (_orders.isEmpty && mounted) {
-        Future.delayed(const Duration(seconds: 2), () {
-          if (!mounted) return;
-          if (!_loading) {
-            _loadPage(refresh: true);
-          }
-        });
+          // If initial load fails while the session is still settling, retry once.
+          Future.delayed(const Duration(seconds: 2), () {
+            if (!mounted) return;
+            if (!_loading) {
+              _loadPage(refresh: true);
+            }
+          });
+        }
+      } else if (mounted) {
+        // Orders are already showing — treat a failed "load more" as having
+        // reached the end of the list instead of surfacing a raw Dio error.
+        setState(() => _hasNext = false);
       }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
 
-  /// One handler for the single button a card ever shows. The chain of
-  /// backend statuses is derived from the order's *current* stage, not from
-  /// the button — "Accept" pushes CONFIRMED→PREPARING, "Mark as Ready" pushes
-  /// READY.
+  /// One handler for the single button a card ever shows. The next backend
+  /// status is derived from the order's *current* stage — one transition per
+  /// tap: new → CONFIRMED → PREPARING → READY.
   Future<void> _updateOrderStatus(
     Map<String, dynamic> order,
     String _,
@@ -301,16 +339,19 @@ class _OrdersTabState extends State<OrdersTab> {
     }
 
     try {
+      String? applied;
       for (final s in chain) {
         await repo.updateOrderStatus(orderId: orderId, status: s);
+        applied = s;
+        // Record each step as it lands, so a later failure never leaves the
+        // card showing a status earlier than what actually went through.
+        sl<OrdersPoller>().recordMerchantStatus(orderId, s);
       }
       if (!mounted) return;
-      final applied = chain.last;
-      sl<OrdersPoller>().recordMerchantStatus(orderId, applied);
       setState(() {
         order['orderStatus'] = applied;
       });
-      _showSnackBar('Updated to ${merchantStatusLabel(applied)}');
+      _showSnackBar('Updated to ${merchantStatusLabel(applied!)}');
     } catch (e) {
       _showSnackBar('Failed to update: $e');
     } finally {
@@ -364,7 +405,7 @@ class _OrdersTabState extends State<OrdersTab> {
                 itemCount: filteredOrders.isEmpty
                     ? 1
                     : filteredOrders.length +
-                          ((_hasNext && _selectedFilter == 'all') ? 1 : 0),
+                          (_selectedFilter == 'all' ? 1 : 0),
                 itemBuilder: (context, index) {
                   // Show loader during initial load, empty state only after loading completes
                   if (filteredOrders.isEmpty) {
@@ -456,24 +497,47 @@ class _OrdersTabState extends State<OrdersTab> {
                     );
                   }
 
-                  // Bottom loader only when viewing 'all'
+                  // Bottom footer only when viewing 'all': a loader while more
+                  // pages remain, or an end-of-list message once they don't
+                  // (including when a "load more" fetch failed).
                   if (index >= filteredOrders.length &&
                       _selectedFilter == 'all') {
+                    if (_hasNext) {
+                      return const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 16),
+                        child: Center(child: CircularProgressIndicator()),
+                      );
+                    }
                     return const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 16),
-                      child: Center(child: CircularProgressIndicator()),
+                      padding: EdgeInsets.symmetric(vertical: 20),
+                      child: Center(
+                        child: Text(
+                          'No more orders to show',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Color(0xFF9CA3AF),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
                     );
                   }
 
                   final order = filteredOrders[index];
+                  final orderId = order['id']?.toString() ?? '';
+
+                  // While a status change is in flight, show a skeleton rather
+                  // than the card with its soon-to-be-stale status.
+                  if (_updatingOrderIds.contains(orderId)) {
+                    return const OrderCardShimmer();
+                  }
+
                   final isExpanded = _expandedOrderId == order['id'].toString();
 
                   return OrderCard(
                     order: order,
                     isExpanded: isExpanded,
-                    isUpdating: _updatingOrderIds.contains(
-                      order['id']?.toString() ?? '',
-                    ),
+                    isUpdating: false,
                     onTap: () {
                       setState(() {
                         _expandedOrderId = isExpanded
