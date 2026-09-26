@@ -24,7 +24,7 @@ class _PastOrdersScreenState extends State<PastOrdersScreen> {
   bool _initialLoading = true;
   bool _hasNext = true;
   int _page = 0;
-  final int _size = 10;
+  final int _size = 100;
 
   @override
   void initState() {

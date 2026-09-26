@@ -27,7 +27,7 @@ class _OrdersTabState extends State<OrdersTab> {
   bool _silentRefreshing = false;
   bool _hasNext = true;
   int _page = 0;
-  final int _size = 10;
+  final int _size = 20;
 
   Timer? _refreshTimer;
   Timer? _initialWaitTimer;

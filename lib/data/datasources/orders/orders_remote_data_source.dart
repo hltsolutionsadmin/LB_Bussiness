@@ -107,11 +107,11 @@ class OrdersRemoteDataSource {
     final token = await _storage.readToken();
     if (kDebugMode) {
       debugPrint(
-        '[API] List Orders -> GET /api/orders/store/$storeId?page=$page&size=$size',
+        '[API] List Orders -> GET /api/fulfillment/orders/partner/$storeId?page=$page&size=$size',
       );
     }
     final res = await _client.dio.get(
-      '/api/orders/store/$storeId',
+      '/api/fulfillment/orders/partner/$storeId',
       queryParameters: {'page': page, 'size': size, 'sort': 'createdDate,desc'},
       options: _authOptions(token),
     );

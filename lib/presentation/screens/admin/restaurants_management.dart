@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:local_basket_business/theme/app_colors.dart';
@@ -134,15 +136,58 @@ class _RestaurantManagementScreenState
   final Set<String> _deletingStoreIds = {};
   final Set<String> _updatingStoreIds = {};
   bool _loading = true;
+  bool _loadingMore = false;
+  bool _hasNext = true;
+  int _page = 0;
+  int _requestId = 0;
+  static const int _pageSize = 30;
+  final ScrollController _scrollController = ScrollController();
+  Timer? _searchDebounce;
 
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_onScroll);
     _loadRestaurants();
   }
 
-  Future<void> _loadRestaurants() async {
-    setState(() => _loading = true);
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    if (_scrollController.position.pixels >=
+            _scrollController.position.maxScrollExtent - 200 &&
+        !_loading &&
+        !_loadingMore &&
+        _hasNext) {
+      _loadRestaurants(loadMore: true);
+    }
+  }
+
+  void _onSearchChanged(String value) {
+    setState(() => _searchQuery = value);
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(
+      const Duration(milliseconds: 400),
+      () => _loadRestaurants(),
+    );
+  }
+
+  Future<void> _loadRestaurants({bool loadMore = false}) async {
+    final requestId = ++_requestId;
+    final nextPage = loadMore ? _page + 1 : 0;
+    setState(() {
+      if (loadMore) {
+        _loadingMore = true;
+      } else {
+        _loading = true;
+      }
+    });
     try {
       final b2bUnitId = GetIt.I<SessionStore>().b2bUnitId;
       if (b2bUnitId.isEmpty) {
@@ -150,8 +195,14 @@ class _RestaurantManagementScreenState
       }
 
       final ds = GetIt.I<BusinessRemoteDataSource>();
-      final list = await ds.searchStores(b2bUnitId: b2bUnitId);
-      final mapped = list.map<_Restaurant>((raw) {
+      final result = await ds.searchStores(
+        b2bUnitId: b2bUnitId,
+        searchTerm: _searchQuery.trim(),
+        page: nextPage,
+        size: _pageSize,
+      );
+      if (requestId != _requestId) return;
+      final mapped = result.items.map<_Restaurant>((raw) {
         final m = Map<String, dynamic>.from(raw);
         String str(dynamic v) => v?.toString() ?? '';
         final active = (m['active'] ?? m['enabled'] ?? false) == true;
@@ -166,17 +217,26 @@ class _RestaurantManagementScreenState
       }).toList();
       if (!mounted) return;
       setState(() {
-        _all
-          ..clear()
-          ..addAll(mapped);
+        if (!loadMore) _all.clear();
+        final existingIds = _all.map((r) => r.id).toSet();
+        _all.addAll(
+          mapped.where((r) => r.id.isEmpty || !existingIds.contains(r.id)),
+        );
+        _page = nextPage;
+        _hasNext = result.hasNext;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || requestId != _requestId) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Failed to load restaurants')),
       );
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && requestId == _requestId) {
+        setState(() {
+          _loading = false;
+          _loadingMore = false;
+        });
+      }
     }
   }
 
@@ -328,8 +388,7 @@ class _RestaurantManagementScreenState
                           children: [
                             SearchBarWidget(
                               hintText: 'Search restaurants...',
-                              onChanged: (v) =>
-                                  setState(() => _searchQuery = v),
+                              onChanged: _onSearchChanged,
                             ),
                             const SizedBox(height: 12),
                             _buildFilterChips(),
@@ -352,25 +411,39 @@ class _RestaurantManagementScreenState
                         actionText: 'Add Restaurant',
                         onAction: _openOnboarding,
                       )
-                    : ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        itemCount: restaurants.length,
-                        itemBuilder: (context, index) {
-                          final restaurant = restaurants[index];
-                          return _RestaurantCard(
-                            data: restaurant,
-                            index: index,
-                            isDeleting: _deletingStoreIds.contains(
-                              restaurant.id,
-                            ),
-                            isUpdating: _updatingStoreIds.contains(
-                              restaurant.id,
-                            ),
-                            onActiveChanged: (active) =>
-                                _setStoreActive(restaurant, active),
-                            onDelete: () => _confirmDeleteStore(restaurant),
-                          );
-                        },
+                    : RefreshIndicator(
+                        onRefresh: _loadRestaurants,
+                        child: ListView.builder(
+                          controller: _scrollController,
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          itemCount:
+                              restaurants.length + (_loadingMore ? 1 : 0),
+                          itemBuilder: (context, index) {
+                            if (index >= restaurants.length) {
+                              return const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 16),
+                                child: Center(
+                                  child: CircularProgressIndicator(),
+                                ),
+                              );
+                            }
+                            final restaurant = restaurants[index];
+                            return _RestaurantCard(
+                              data: restaurant,
+                              index: index,
+                              isDeleting: _deletingStoreIds.contains(
+                                restaurant.id,
+                              ),
+                              isUpdating: _updatingStoreIds.contains(
+                                restaurant.id,
+                              ),
+                              onActiveChanged: (active) =>
+                                  _setStoreActive(restaurant, active),
+                              onDelete: () => _confirmDeleteStore(restaurant),
+                            );
+                          },
+                        ),
                       ),
               ),
             ],
@@ -382,15 +455,6 @@ class _RestaurantManagementScreenState
 
   List<_Restaurant> _filtered() {
     var list = List<_Restaurant>.from(_all);
-    if (_searchQuery.isNotEmpty) {
-      list = list
-          .where(
-            (r) =>
-                r.name.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-                r.code.toLowerCase().contains(_searchQuery.toLowerCase()),
-          )
-          .toList();
-    }
     if (_selectedFilter != 'All') {
       list = list.where((r) => r.status == _selectedFilter).toList();
     }

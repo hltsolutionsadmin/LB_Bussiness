@@ -91,7 +91,7 @@ class OrdersPoller extends ChangeNotifier {
   void alertFromScreen(List<Map<String, dynamic>> items, BuildContext context) {
     try {
       final awaiting = items
-          .where((o) => isAwaitingAcceptance(_statusOf(o)))
+          .where(_needsAlert)
           .toList()
         ..sort((a, b) => _createdMillis(b).compareTo(_createdMillis(a)));
       _log('alertFromScreen awaiting=${awaiting.length} showing=$_showingDialog');
@@ -149,6 +149,19 @@ class OrdersPoller extends ChangeNotifier {
     return (o['orderStatus'] ?? o['status'] ?? '').toString();
   }
 
+  /// Whether [o] should ring + pop the new-order alert. Besides brand-new
+  /// orders, the backend may hand over an order already CONFIRMED (e.g. after
+  /// payment) — that still needs the merchant's attention, unless the merchant
+  /// has already acted on it from this app.
+  bool _needsAlert(Map<String, dynamic> o) {
+    final local = merchantStatus[_orderId(o)];
+    if (local != null) return isAwaitingAcceptance(local);
+    final stage = merchantStage(
+      (o['orderStatus'] ?? o['status'] ?? '').toString(),
+    );
+    return stage == 'new' || stage == 'confirmed';
+  }
+
   int _createdMillis(Map<String, dynamic> o) {
     final raw = o['createdDate'] ?? o['createdAt'] ?? o['created'];
     return DateTime.tryParse(raw?.toString() ?? '')?.millisecondsSinceEpoch ?? 0;
@@ -172,7 +185,7 @@ class OrdersPoller extends ChangeNotifier {
       final items = page.items;
 
       final awaiting = items
-          .where((o) => isAwaitingAcceptance(_statusOf(o)))
+          .where(_needsAlert)
           .toList()
         ..sort((a, b) => _createdMillis(b).compareTo(_createdMillis(a)));
 
@@ -315,7 +328,7 @@ class OrdersPoller extends ChangeNotifier {
     try {
       await _audioPlayer.setReleaseMode(ReleaseMode.loop);
       await _audioPlayer.setVolume(1.0);
-      await _audioPlayer.play(AssetSource('sounds/manasantha.mp3'));
+      await _audioPlayer.play(AssetSource('sounds/hen.mp3'));
       _soundPlaying = true;
       _log('sound started');
     } catch (e) {

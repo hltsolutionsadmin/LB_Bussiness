@@ -301,28 +301,40 @@ class BusinessRemoteDataSource {
         .toList();
   }
 
-  Future<List<Map<String, dynamic>>> searchStores({
+  Future<({List<Map<String, dynamic>> items, bool hasNext})> searchStores({
     required String b2bUnitId,
     String searchTerm = '',
+    int page = 0,
+    int size = 30,
   }) async {
     final token = await _storage.readToken();
     if (kDebugMode) {
       debugPrint('[API] Search Stores -> GET /api/stores/search');
-      debugPrint('[API] Query: searchTerm=$searchTerm, b2bUnitId=$b2bUnitId');
+      debugPrint(
+        '[API] Query: searchTerm=$searchTerm, b2bUnitId=$b2bUnitId, page=$page, size=$size',
+      );
     }
     final res = await _client.dio.get(
       '/api/stores/search',
-      queryParameters: {'searchTerm': searchTerm, 'b2bUnitId': b2bUnitId},
+      queryParameters: {
+        'searchTerm': searchTerm,
+        'b2bUnitId': b2bUnitId,
+        'page': page,
+        'size': size,
+      },
       options: _authOptions(token),
     );
     final data = res.data;
     List list;
+    Map<String, dynamic>? pageInfo;
     if (data is Map<String, dynamic>) {
       if (data['content'] is List) {
         list = data['content'] as List;
+        pageInfo = data;
       } else if (data['data'] is Map<String, dynamic> &&
           (data['data'] as Map<String, dynamic>)['content'] is List) {
-        list = (data['data'] as Map<String, dynamic>)['content'] as List;
+        pageInfo = data['data'] as Map<String, dynamic>;
+        list = pageInfo['content'] as List;
       } else if (data['data'] is List) {
         list = data['data'] as List;
       } else {
@@ -333,9 +345,22 @@ class BusinessRemoteDataSource {
     } else {
       list = [];
     }
-    return list
+    final items = list
         .whereType<Map>()
         .map((e) => Map<String, dynamic>.from(e))
         .toList();
+
+    bool hasNext;
+    final last = pageInfo?['last'];
+    final totalPages = (pageInfo?['totalPages'] as num?)?.toInt() ?? 0;
+    final number = (pageInfo?['number'] as num?)?.toInt() ?? page;
+    if (last is bool) {
+      hasNext = !last;
+    } else if (totalPages > 0) {
+      hasNext = (number + 1) < totalPages;
+    } else {
+      hasNext = items.length == size;
+    }
+    return (items: items, hasNext: hasNext);
   }
 }
